@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ParsedDataObject } from './types/parsed-object'
-import { formatParsedData, parseQRCode } from './utils/parse-qr'
+import { formatParsedData, parseQRCode, validateCRC } from './utils/parse-qr'
 
 export default function QRCodeParser() {
   const [qrData, setQrData] = useState('')
@@ -55,7 +55,7 @@ export default function QRCodeParser() {
       }
 
       const qrObject = parseQRCode(qrData)
-      console.log('Parsed QR Object:', qrObject)
+      validateCRC(qrObject)
       setQRObject(qrObject)
       setParsedData(formatParsedData(qrObject))
       setIsValid(true)
@@ -154,6 +154,7 @@ export default function QRCodeParser() {
 
       const qrObject = parseQRCode(data)
       console.log('Parsed QR Object:', qrObject)
+      validateCRC(qrObject)
       setQRObject(qrObject)
       setParsedData(formatParsedData(qrObject))
       setIsValid(true)
@@ -363,7 +364,7 @@ export default function QRCodeParser() {
       <div>
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="cursor-help">{displayText}</span>
+            <span className="cursor-pointer">{displayText}</span>
           </TooltipTrigger>
           <TooltipContent side="right">
             <div className="max-w-xs">
