@@ -1,95 +1,229 @@
 import { DATA_OBJECT_DEFINITIONS } from '@/constants/emvco'
+import type { ParsedDataObject } from '@/types/parsed-object'
 
-const parsedData = (
-  data: string,
-  index: { value: number },
-): { id: string; payloadLenStr: string; payload: string } => {
-  const ID_SIZE = 2
-  const LEN_SIZE = 2
+const CRC_CHECKSUM = '63'
 
-  if (data.length < ID_SIZE + LEN_SIZE) {
-    throw new Error('data too short')
+class QRParser {
+  private data: string
+  private index: number
+
+  constructor(data: string) {
+    this.data = data
+    this.index = 0
   }
 
-  const id = data.substring(index.value, index.value + ID_SIZE)
-  index.value += ID_SIZE
+  private parseDataObject(parentId?: string, grandParentId?: string): ParsedDataObject {
+    const ID_SIZE = 2
+    const LEN_SIZE = 2
 
-  const payloadLenStr = data.substring(index.value, index.value + LEN_SIZE)
-  index.value += LEN_SIZE
+    // Extract ID
+    const id = this.data.substring(this.index, this.index + ID_SIZE)
+    this.index += ID_SIZE
 
-  const payloadLen = parseInt(payloadLenStr, 10)
-  if (isNaN(payloadLen)) {
-    throw new Error(`invalid payload length ${payloadLenStr}`)
-  }
-
-  if (data.length < index.value + payloadLen) {
-    throw new Error('data too short for payload')
-  }
-
-  const payload = data.substring(index.value, index.value + payloadLen)
-  index.value += payloadLen
-
-  return { id, payloadLenStr, payload }
-}
-
-const formatCaseOutOfList = (id: number, payload: string): string => {
-  let response = ''
-  const index = { value: 0 }
-
-  while (index.value < payload.length) {
-    const { id: subID, payloadLenStr, payload: payloadData } = parsedData(payload, index)
-    response += `. . . ${subID} ${payloadLenStr}`
-
-    if (id === 38 && subID === '01') {
-      response += '\n'
-      const subIndex = { value: index.value - payloadData.length }
-
-      while (subIndex.value < parseInt(payloadLenStr, 10)) {
-        const {
-          id: subSubID,
-          payloadLenStr: subPayloadLenStr,
-          payload: subPayloadData,
-        } = parsedData(payload, subIndex)
-        response += `. . . . . . ${subSubID} ${subPayloadLenStr} ${subPayloadData}\n`
-      }
-    } else {
-      response += ` ${payloadData}\n`
+    if (this.data.length < this.index + LEN_SIZE) {
+      throw new Error(
+        `Data too short for ID ${id}: expected at least ${LEN_SIZE} characters, got ${
+          this.data.length - this.index + 1
+        }`,
+      )
     }
+
+    // Extract length
+    const lengthStr = this.data.substring(this.index, this.index + LEN_SIZE)
+    this.index += LEN_SIZE
+
+    const length = parseInt(lengthStr, 10)
+    if (isNaN(length)) {
+      throw new Error(`Invalid payload length: ${lengthStr}`)
+    }
+
+    if (this.data.length < this.index + length) {
+      throw new Error(
+        `Data too short for payload at id ${id}: expected ${length} characters, got ${
+          this.data.length - this.index
+        }`,
+      )
+    }
+
+    // Extract value
+    const value = this.data.substring(this.index, this.index + length)
+    this.index += length
+
+    // Get metadata from definitions
+    const definition = this.getDefinition(id, parentId, grandParentId)
+    let description = definition?.description
+    if (definition?.payload_description) {
+      const payloadDescription = definition.payload_description[value] || value
+      description = definition.description + `\n${value}:${payloadDescription}`
+    }
+
+    const dataObject: ParsedDataObject = {
+      id,
+      length: lengthStr,
+      value,
+      name: definition?.name,
+      format: definition?.format,
+      description: description,
+    }
+
+    // Parse children if this is a structured field
+    if (definition?.subFields && this.isStructuredField(id)) {
+      dataObject.children = this.parseChildren(value, definition.subFields, id)
+    }
+
+    return dataObject
   }
 
-  return response
+  private parseChildren(
+    childData: string,
+    subFieldDefs: Record<string, any>,
+    parentId?: string,
+    grandParentId?: string,
+  ): ParsedDataObject[] {
+    const children: ParsedDataObject[] = []
+    const childParser = new QRParser(childData)
+
+    while (childParser.index < childData.length) {
+      const child = childParser.parseDataObject(parentId, grandParentId)
+
+      // Special handling for VietQR field 38, sub-field 01
+      if (parentId === '38' && child.id === '01') {
+        // Field 01 in VietQR contains nested sub-fields
+        const subFieldDef = subFieldDefs[child.id]
+        if (subFieldDef?.subFields) {
+          child.children = this.parseChildren(
+            child.value,
+            subFieldDef.subFields,
+            child.id,
+            parentId,
+          )
+        }
+      }
+
+      children.push(child)
+    }
+
+    return children
+  }
+
+  private getDefinition(id: string, parentId?: string, grandParentId?: string) {
+    if (grandParentId) {
+      const grandParentDefinition: any = this.getDefinition(grandParentId)
+      if (grandParentId && grandParentDefinition && parentId) {
+        const parentDefinition: any = this.getDefinition(parentId, grandParentId)
+        if (parentDefinition && parentDefinition.subFields?.[id]) {
+          return parentDefinition.subFields[id]
+        }
+        for (const [key, definition] of Object.entries(grandParentDefinition.subFields || {})) {
+          if (key.includes('-')) {
+            const [start, end] = key.split('-')
+            const idNum = parseInt(id, 10)
+            const startNum = parseInt(start, 10)
+            const endNum = parseInt(end, 10)
+
+            if (idNum >= startNum && idNum <= endNum) {
+              return definition
+            }
+          }
+        }
+      }
+      return
+    }
+    if (parentId) {
+      const parentDefinition: any = this.getDefinition(parentId)
+      if (parentDefinition) {
+        if (parentDefinition.subFields?.[id]) {
+          return parentDefinition.subFields[id]
+        }
+        for (const [key, definition] of Object.entries(parentDefinition.subFields || {})) {
+          if (key.includes('-')) {
+            const [start, end] = key.split('-')
+            const idNum = parseInt(id, 10)
+            const startNum = parseInt(start, 10)
+            const endNum = parseInt(end, 10)
+
+            if (idNum >= startNum && idNum <= endNum) {
+              return definition
+            }
+          }
+        }
+      }
+    }
+    // Check exact match first
+    if (DATA_OBJECT_DEFINITIONS[id]) {
+      return DATA_OBJECT_DEFINITIONS[id]
+    }
+
+    // Check range matches
+    for (const [key, definition] of Object.entries(DATA_OBJECT_DEFINITIONS)) {
+      if (key.includes('-')) {
+        const [start, end] = key.split('-')
+        const idNum = parseInt(id, 10)
+        const startNum = parseInt(start, 10)
+        const endNum = parseInt(end, 10)
+
+        if (idNum >= startNum && idNum <= endNum) {
+          return definition
+        }
+      }
+    }
+
+    return null
+  }
+
+  private isStructuredField(id: string): boolean {
+    const idNum = parseInt(id, 10)
+
+    // Fields that contain sub-fields
+    return (
+      (idNum >= 26 && idNum <= 51) || // Merchant Account Information Templates
+      idNum === 38 || // VietQR Code through NAPAS
+      idNum === 62 || // Additional Data Field Template
+      idNum === 64 // Merchant Information—Language Template
+    )
+  }
+
+  public parse(): ParsedDataObject[] {
+    const result: ParsedDataObject[] = []
+    this.index = 0
+
+    while (this.index < this.data.length) {
+      const dataObject = this.parseDataObject()
+      result.push(dataObject)
+    }
+
+    return result
+  }
 }
 
-const formatQR = (data: string): string => {
+// Main parsing function
+export function parseQRCode(data: string): ParsedDataObject[] {
   if (!data) {
-    throw new Error('data cannot be empty')
+    throw new Error('Data cannot be empty')
   }
 
-  let formattedData = ''
-  const index = { value: 0 }
+  const parser = new QRParser(data)
+  return parser.parse()
+}
 
-  while (index.value < data.length) {
-    const { id: idStr, payloadLenStr, payload } = parsedData(data, index)
-    const id = parseInt(idStr, 10)
+// Helper function to format parsed data for display
+function formatParsedData(parsedData: ParsedDataObject[], indent: number = 0): string {
+  let result = ''
+  const indentStr = '. '.repeat(indent)
 
-    if (id >= 26 && id <= 51) {
-      try {
-        const payloadFormatted = formatCaseOutOfList(id, payload)
-        formattedData += `${idStr} ${payloadLenStr}\n${payloadFormatted}`
-      } catch (error) {
-        console.error(`Error formatting case out of list for ID ${id}:`, error)
-        throw new Error(
-          `Failed to format case out of list for ID ${id}: ${
-            error instanceof Error ? error.message : 'Unknown error'
-          }`,
-        )
-      }
-    } else {
-      formattedData += `${idStr} ${payloadLenStr} ${payload}\n`
+  for (const item of parsedData) {
+    result += `${indentStr}${item.id} ${item.length}`
+    if (!item.children || item.children.length === 0) {
+      result += ` ${item.value}`
+    }
+    result += '\n'
+
+    if (item.children && item.children.length > 0) {
+      result += formatParsedData(item.children, indent + 3)
     }
   }
 
-  return formattedData
+  return result
 }
 
 function calculateCrc16IBM3740(data: string | Uint8Array): number {
@@ -132,57 +266,25 @@ function calculateCrc16IBM3740(data: string | Uint8Array): number {
   return crc ^ 0x0000
 }
 
-function getDescriptionFromID(
-  id: string,
-  highestID?: string,
-):
-  | {
-      name: string
-      format: string
-      description: string
-      subFields?: Record<string, { name: string; format: string; description: string }>
-      payload_description?: string
-    }
-  | undefined {
-  if (!highestID) {
-    for (const key in DATA_OBJECT_DEFINITIONS) {
-      if (key === highestID) {
-        return DATA_OBJECT_DEFINITIONS[key]
-      } else {
-        const rangeMatch = key.match(/^(\d+)-(\d+)$/)
-        if (rangeMatch) {
-          const start = parseInt(rangeMatch[1], 10)
-          const end = parseInt(rangeMatch[2], 10)
-          const idNum = parseInt(id, 10)
-          if (idNum >= start && idNum <= end) {
-            return DATA_OBJECT_DEFINITIONS[key]
-          }
-        }
-      }
-    }
-  } else {
-    const fieldDescription = getDescriptionFromID(highestID)
-    if (fieldDescription) {
-      if (fieldDescription.subFields && fieldDescription.subFields[id]) {
-        return fieldDescription.subFields[id]
-      } else {
-        for (const key in DATA_OBJECT_DEFINITIONS) {
-          if (key === id) {
-            return DATA_OBJECT_DEFINITIONS[key]
-          } else {
-            const rangeMatch = key.match(/^(\d+)-(\d+)$/)
-            if (rangeMatch) {
-              const start = parseInt(rangeMatch[1], 10)
-              const end = parseInt(rangeMatch[2], 10)
-              const idNum = parseInt(id, 10)
-              if (idNum >= start && idNum <= end) {
-                return DATA_OBJECT_DEFINITIONS[key]
-              }
-            }
-          }
-        }
-      }
-    }
+function validateCRC(data: ParsedDataObject[]) {
+  if (!data || data.length === 0) {
+    throw new Error('Data cannot be empty for CRC validation')
+  }
+  const crcChecksum = data.find((item) => item.id === CRC_CHECKSUM)
+  if (!crcChecksum) {
+    throw new Error('CRC checksum not found in data')
+  }
+  const dataWithoutCRC = data
+    .filter((item) => item.id !== CRC_CHECKSUM)
+    .map((item) => `${item.id}${item.length.toString().padStart(2, '0')}${item.value}`)
+    .join('')
+  const checkSumValue = calculateCrc16IBM3740(
+    dataWithoutCRC + `${crcChecksum.id}${crcChecksum.length}`,
+  )
+    .toString(16)
+    .toUpperCase()
+  if (checkSumValue !== crcChecksum.value) {
+    throw new Error(`CRC checksum mismatch: expected ${checkSumValue}, got ${crcChecksum.value}`)
   }
 }
-export { calculateCrc16IBM3740, formatCaseOutOfList, formatQR, getDescriptionFromID, parsedData }
+export { calculateCrc16IBM3740, formatParsedData, validateCRC }

@@ -1,11 +1,28 @@
+import { merchantCategoryCodes } from './mcc'
+
 export const DATA_OBJECT_DEFINITIONS: Record<
   string,
   {
     name: string
     format: string
     description: string
-    subFields?: Record<string, { name: string; format: string; description: string }>
-    payload_description?: string
+    subFields?: Record<
+      string,
+      {
+        name: string
+        format: string
+        description: string
+        subFields?: Record<
+          string,
+          {
+            name: string
+            format: string
+            description: string
+          }
+        >
+      }
+    >
+    payload_description?: Record<string, string>
   }
 > = {
   '00': {
@@ -23,13 +40,13 @@ export const DATA_OBJECT_DEFINITIONS: Record<
     format: 'ans',
     description: 'Merchant account information, can include multiple fields',
   },
-  '26-51': {
+  '26-37': {
     name: 'Merchant Account Information Template',
     format: 'S',
     description: 'Template for merchant account information',
     subFields: {
       '00': {
-        name: 'Globally Unique Identifier',
+        name: 'Globally Unique Identifier (GUID)',
         format: 'ans',
         description: `An identifier that sets the context
 of the data that follows.
@@ -49,6 +66,84 @@ specific to the Globally Unique
 Identifier.`,
       },
     },
+  },
+  '38': {
+    name: 'VietQR Code through NAPAS',
+    format: 'S',
+    description: 'VietQR code data structure',
+    subFields: {
+      '00': {
+        name: 'Globally Unique Identifier (GUID)',
+        format: 'ans',
+        description: `An identifier that sets the context
+of the data that follows.
+The value is one of the following:
+• an Application Identifier
+(AID);
+• a [UUID] without the hyphen
+(-) separators;
+• a reverse domain name.`,
+      },
+      '01': {
+        name: 'Payment Network Specific Data',
+        format: 's',
+        description: `Association of data objects to
+IDs and type of data object is
+specific to the Globally Unique
+Identifier.`,
+        subFields: {
+          '00': {
+            name: 'Acquirer ID',
+            format: 's',
+            description: 'Acquirer identifier',
+          },
+          '01': {
+            name: 'Merchant ID',
+            format: 's',
+            description: 'Merchant identifier',
+          },
+        },
+      },
+      '02': {
+        name: 'Service Code',
+        format: 's',
+        description:
+          'Service code for the transaction: QRIBFTTC: NAPAS247 through QR to Card, QRIBFTTA: NAPAS247 through QR to Account',
+      },
+    },
+  },
+  '39-51': {
+    name: 'Merchant Account Information Template',
+    format: 'S',
+    description: 'Template for merchant account information',
+    subFields: {
+      '00': {
+        name: 'Globally Unique Identifier (GUID)',
+        format: 'ans',
+        description: `An identifier that sets the context
+of the data that follows.
+The value is one of the following:
+• an Application Identifier
+(AID);
+• a [UUID] without the hyphen
+(-) separators;
+• a reverse domain name.`,
+      },
+      '01-99': {
+        name: 'Payment Network Specific Data',
+        format: 's',
+        description: `Association of data objects to
+IDs and type of data object is
+specific to the Globally Unique
+Identifier.`,
+      },
+    },
+  },
+  '52': {
+    name: 'Merchant Category Code',
+    format: 'N',
+    description: '4-digit merchant category code',
+    payload_description: merchantCategoryCodes,
   },
   '53': { name: 'Transaction Currency', format: 'N', description: 'ISO 4217 currency code' },
   '54': { name: 'Transaction Amount', format: 'ans', description: 'Transaction amount' },

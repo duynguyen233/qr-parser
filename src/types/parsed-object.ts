@@ -1,6 +1,6 @@
 export interface ParsedDataObject {
   id: string
-  length: number
+  length: string
   value: string
   children?: ParsedDataObject[]
   name?: string
