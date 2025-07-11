@@ -224,13 +224,11 @@ export default function QRCodeParser() {
   const handleParseData = (data: string) => {
     try {
       setError('')
-      if (!data.trim()) {
-        setError('No QR code data found')
+      if (!data) {
         return
       }
 
       const qrObject = parseQRCode(data)
-      console.log('Parsed QR Object:', qrObject)
       validateCRC(qrObject)
       setQRObject(qrObject)
       setParsedData(formatParsedData(qrObject))
@@ -444,10 +442,13 @@ export default function QRCodeParser() {
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
       const qrCode = jsQR(imageData.data, imageData.width, imageData.height)
 
-      if (qrCode) {
-        handleParseData(qrCode.data)
-        stopCamera()
-        setQrData(qrCode.data)
+      if (qrCode && qrCode.data) {
+        try {
+          handleParseData(qrCode.data)
+          setQrData(qrCode.data)
+        } finally {
+          stopCamera()
+        }
       } else {
         console.log('No QR code found, continuing scan')
       }
@@ -464,7 +465,7 @@ export default function QRCodeParser() {
     }
     setIsScanning(false)
     if (scanIntervalRef.current) {
-      cancelAnimationFrame(scanIntervalRef.current)
+      // cancelAnimationFrame(scanIntervalRef.current)
     }
   }
 
@@ -631,7 +632,7 @@ export default function QRCodeParser() {
                   placeholder="00020101021126580014A000000677010111011500000000000052040000530370654041.005802PH5913MERCHANT NAME6009MAKATICITY61051226062070703***6304"
                   value={qrData}
                   onChange={(e) => setQrData(e.target.value)}
-                  className="font-mono text-sm resize-none overflow-y-auto max-h-[300px] min-h-[150px]"
+                  className="font-mono text-sm resize-none min-h-[150px]"
                   rows={4}
                 />
               </div>
@@ -713,11 +714,6 @@ export default function QRCodeParser() {
                       className="absolute inset-0"
                       style={{ display: 'none' }}
                     />
-                    <div className="absolute inset-0 border-2 border-dashed border-white/50 rounded-lg pointer-events-none flex items-center justify-center">
-                      <div className="bg-black/50 text-white px-3 py-1 rounded text-sm">
-                        Point camera at QR code
-                      </div>
-                    </div>
                   </div>
                 </div>
               )}
@@ -787,7 +783,7 @@ export default function QRCodeParser() {
               </Dialog>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="font-mono text-sm whitespace-pre-wrap border rounded-lg p-4 max-h-[300px] overflow-y-auto bg-muted/50">
+              <div className="font-mono text-sm whitespace-pre-wrap border rounded-lg p-4 bg-muted/50">
                 {parsedData ? (
                   <RenderDataObject parseObject={qrObject} />
                 ) : (
