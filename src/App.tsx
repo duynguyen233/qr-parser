@@ -243,18 +243,6 @@ export default function QRCodeParser() {
     }
   }
 
-  const updateQRFromParsed = (newParsedData: string) => {
-    try {
-      setParsedData(newParsedData)
-      // Here you would need to implement reverse parsing from formatted data back to raw QR data
-      // This is complex and depends on your specific QR format
-      // For now, we'll just update the display
-      setError('')
-    } catch (error) {
-      setError('Failed to update QR data from parsed format')
-    }
-  }
-
   // Drag and Drop handlers
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
@@ -739,6 +727,14 @@ export default function QRCodeParser() {
                 <Alert variant={error.startsWith('Warning') ? 'default' : 'destructive'}>
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              {cameraPermission === 'denied' && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Camera access denied. Please allow camera access in your browser settings.
+                  </AlertDescription>
                 </Alert>
               )}
 
