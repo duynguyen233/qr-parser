@@ -28,7 +28,6 @@ export default function QRCodeParser() {
   const [error, setError] = useState('')
   const [isValid, setIsValid] = useState(false)
   const [copySuccess, setCopySuccess] = useState(false)
-  const [pasteSuccess, setPasteSuccess] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
