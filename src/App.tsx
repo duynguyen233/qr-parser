@@ -347,7 +347,6 @@ export default function QRCodeParser() {
       if (!videoRef.current) return
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        console.error('Camera API not supported in this browser')
         throw new Error('Camera API not supported in this browser')
       }
 
@@ -360,7 +359,6 @@ export default function QRCodeParser() {
       videoRef.current.play()
       requestAnimationFrame(startQRScanning)
     } catch (error) {
-      console.error('Camera error:', error)
       setIsScanning(false)
       setCameraPermission('denied')
 
@@ -415,7 +413,6 @@ export default function QRCodeParser() {
         }
       }
     } catch (error) {
-      console.error('Basic camera error:', error)
       setError(
         'Failed to access camera even with basic settings. Please check your camera permissions.',
       )
@@ -434,7 +431,6 @@ export default function QRCodeParser() {
     if (!ctx) return
 
     if (video.readyState === video.HAVE_ENOUGH_DATA) {
-      console.log('Starting QR scan')
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
@@ -450,7 +446,6 @@ export default function QRCodeParser() {
           stopCamera()
         }
       } else {
-        console.log('No QR code found, continuing scan')
       }
     }
 

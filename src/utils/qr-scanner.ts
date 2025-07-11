@@ -46,7 +46,6 @@ function scanQRCode(file: File): Promise<string> {
       return result
     })
     .catch((error) => {
-      console.error('QR code scanning failed:', error)
       throw error
     })
 }
