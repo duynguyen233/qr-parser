@@ -60,7 +60,7 @@ export default function QRCodeParser() {
       setParsedData(formatParsedData(qrObject))
       setIsValid(true)
     } catch (error) {
-      console.log('QR parsing error:', error)
+      setQRObject([])
       setError(
         'Failed to parse QR code data - ' +
           (error instanceof Error ? error.message : 'Unknown error'),
@@ -198,26 +198,99 @@ export default function QRCodeParser() {
       setError('')
       setIsScanning(true)
 
+      const permissionsStatus = await navigator.permissions.query({
+        name: 'camera',
+      })
+      if (permissionsStatus.state === 'denied') {
+        setError(
+          'Camera access denied. Please click the camera icon in the address bar and allow camera access, then try again.',
+        )
+        return
+      }
+
       if (!videoRef.current) return
 
+      // Check if mediaDevices is supported
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.error('Camera API not supported in this browser')
+        throw new Error('Camera API not supported in this browser')
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
+        video: true,
       })
 
       setCameraPermission('granted')
       videoRef.current.srcObject = stream
 
-      // Wait for video to be ready before starting scan
-      videoRef.current.onloadedmetadata = () => {
-        startQRScanning()
+      videoRef.current.play()
+      requestAnimationFrame(startQRScanning)
+    } catch (error) {
+      console.error('Camera error:', error)
+      setIsScanning(false)
+      setCameraPermission('denied')
+
+      // Provide specific error messages based on error type
+      if (error instanceof Error) {
+        switch (error.name) {
+          case 'NotAllowedError':
+            setError(
+              'Camera access denied. Please click the camera icon in the address bar and allow camera access, then try again.',
+            )
+            break
+          case 'NotFoundError':
+            setError('No camera found. Please ensure a camera is connected to your device.')
+            break
+          case 'NotReadableError':
+            setError(
+              'Camera is already in use by another application. Please close other camera apps and try again.',
+            )
+            break
+          case 'OverconstrainedError':
+            setError('Camera constraints not supported. Trying with basic settings...')
+            // Retry with basic constraints
+            setTimeout(() => startCameraWithBasicConstraints(), 1000)
+            break
+          case 'SecurityError':
+            setError(
+              "Camera access blocked due to security settings. Please ensure you're on HTTPS or localhost.",
+            )
+            break
+          default:
+            setError(
+              `Camera error: ${error.message}. Please check your camera permissions and try again.`,
+            )
+        }
+      } else {
+        setError('Failed to access camera. Please ensure camera permissions are granted.')
+      }
+    }
+  }
+
+  const startCameraWithBasicConstraints = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+      })
+
+      if (videoRef.current) {
+        setCameraPermission('granted')
+        videoRef.current.srcObject = stream
+        setIsScanning(true)
+        setError('')
+
+        videoRef.current.onloadedmetadata = () => {
+          startQRScanning()
+        }
       }
     } catch (error) {
-      setError('Failed to access camera. Please ensure camera permissions are granted.')
-      setCameraPermission('denied')
+      console.error('Basic camera error:', error)
+      setError(
+        'Failed to access camera even with basic settings. Please check your camera permissions.',
+      )
       setIsScanning(false)
+      setCameraPermission('denied')
     }
   }
 
@@ -229,29 +302,25 @@ export default function QRCodeParser() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const scan = () => {
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.width = video.videoWidth
-        canvas.height = video.videoHeight
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      console.log('Starting QR scan')
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-        const qrCode = jsQR(imageData.data, imageData.width, imageData.height)
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const qrCode = jsQR(imageData.data, imageData.width, imageData.height)
 
-        if (qrCode) {
-          setQrData(qrCode.data)
-          handleParseData(qrCode.data)
-          stopCamera()
-          return
-        }
-      }
-
-      if (isScanning) {
-        scanIntervalRef.current = requestAnimationFrame(scan)
+      if (qrCode) {
+        handleParseData(qrCode.data)
+        stopCamera()
+        setQrData(qrCode.data)
+      } else {
+        // Continue scanning
+        console.log('No QR code found, continuing scan')
       }
     }
-
-    scan()
+    scanIntervalRef.current = requestAnimationFrame(startQRScanning)
   }
 
   const stopCamera = () => {
@@ -504,12 +573,6 @@ export default function QRCodeParser() {
                     )}
                   </div>
                 )}
-
-                {/* Helper Text */}
-                <p className="text-sm text-muted-foreground">
-                  💡 Tip: You can paste QR code data using Ctrl+V, drag & drop images, or use the
-                  camera
-                </p>
 
                 {/* Error Display */}
                 {error && (
