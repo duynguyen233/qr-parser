@@ -286,4 +286,51 @@ function validateCRC(data: ParsedDataObject[]) {
     throw new Error(`CRC checksum mismatch: expected ${checkSumValue}, got ${crcChecksum.value}`)
   }
 }
+
+function getRawDataStringForCRC(dataObjects: ParsedDataObject[]): string {
+  return dataObjects
+    .map((item) => {
+      if (item.id === CRC_CHECKSUM) {
+        // Exclude the CRC field itself from the data string for calculation
+        return ''
+      }
+      if (item.children && item.children.length > 0) {
+        // For structured fields, concatenate their ID, Length, and then the raw data of their children
+        const childrenRawData = getRawDataStringForCRC(item.children)
+        return `${item.id}${item.length}${childrenRawData}`
+      }
+      // For simple fields, concatenate ID, Length, and Value
+      return `${item.id}${item.length}${item.value}`
+    })
+    .join('')
+}
+
+export function updateCRCInParsedObject(currentQrObject: ParsedDataObject[]): ParsedDataObject[] {
+  const crcIndex = currentQrObject.findIndex((item) => item.id === CRC_CHECKSUM)
+  if (crcIndex === -1) {
+    // If CRC object doesn't exist, return as is.
+    return currentQrObject
+  }
+
+  const dataForCrcCalculation = getRawDataStringForCRC(currentQrObject)
+
+  // The CRC calculation includes the ID and Length of the CRC field itself
+  // The length of the CRC field is always 4 (for the 4-character hex value)
+  const crcDataForCalculation = dataForCrcCalculation + `${CRC_CHECKSUM}04`
+
+  const newCrcValue = calculateCrc16IBM3740(crcDataForCalculation)
+    .toString(16)
+    .toUpperCase()
+    .padStart(4, '0') // Ensure it's 4 characters long
+
+  const updatedQrObject = JSON.parse(JSON.stringify(currentQrObject)) // Deep copy to avoid direct mutation
+  const crcObject = updatedQrObject[crcIndex]
+
+  // Update the value and length of the CRC object
+  crcObject.value = newCrcValue
+  crcObject.length = newCrcValue.length.toString().padStart(2, '0') // Should be '04'
+
+  return updatedQrObject
+}
+
 export { calculateCrc16IBM3740, formatParsedData, validateCRC }

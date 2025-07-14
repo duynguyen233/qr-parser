@@ -33,7 +33,7 @@ export const DATA_OBJECT_DEFINITIONS: Record<
   '01': {
     name: 'Point of Initiation Method',
     format: 'N',
-    description: 'Indicates whether QR is for static (11) or dynamic (12) payment',
+    description: `Indicates whether QR is for static (11) or dynamic (12) payment`,
   },
   '02-25': {
     name: 'Merchant Account Information',
@@ -107,8 +107,9 @@ Identifier.`,
       '02': {
         name: 'Service Code',
         format: 's',
-        description:
-          'Service code for the transaction: QRIBFTTC: NAPAS247 through QR to Card, QRIBFTTA: NAPAS247 through QR to Account',
+        description: `Service code for the transaction: 
+QRIBFTTC: NAPAS247 through QR to Card
+QRIBFTTA: NAPAS247 through QR to Account`,
       },
     },
   },
