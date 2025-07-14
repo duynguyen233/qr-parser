@@ -10,11 +10,9 @@ import {
   AlertCircle,
   Camera,
   CheckCircle,
-  Clipboard,
   ClipboardCheck,
   Copy,
   Download,
-  Image,
   QrCode,
   Upload,
   X,
@@ -439,12 +437,9 @@ export default function QRCodeParser() {
       const qrCode = jsQR(imageData.data, imageData.width, imageData.height)
 
       if (qrCode && qrCode.data) {
-        try {
-          handleParseData(qrCode.data)
-          setQrData(qrCode.data)
-        } finally {
-          stopCamera()
-        }
+        handleParseData(qrCode.data)
+        setQrData(qrCode.data)
+        stopCamera()
       } else {
       }
     }
@@ -576,15 +571,16 @@ export default function QRCodeParser() {
                 </div>
               )}
 
-              {/* Drag and Drop Zone */}
-              <div
-                ref={dropZoneRef}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onPaste={handlePaste}
-                tabIndex={0}
-                className={`
+              <div className="space-y-2">
+                <Label htmlFor="qr-data">QR Code Data</Label>
+                <div
+                  ref={dropZoneRef}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onPaste={handlePaste}
+                  tabIndex={0}
+                  className={`
                   relative border-2 border-dashed rounded-lg p-6 transition-colors cursor-pointer
                   focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2
                   ${
@@ -593,43 +589,23 @@ export default function QRCodeParser() {
                       : 'border-muted-foreground/25 hover:border-muted-foreground/50'
                   }
                 `}
-              >
-                <div className="text-center space-y-3">
-                  <div className="flex justify-center space-x-2">
-                    <Image className="h-8 w-8 text-muted-foreground" />
-                    <Clipboard className="h-8 w-8 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
-                      {isDragOver
-                        ? 'Drop image here to scan QR code'
-                        : 'Drag & drop an image or paste from clipboard'}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Copy an image and press Ctrl+V, or click here and paste
-                    </p>
-                  </div>
-                </div>
-
-                {(isProcessing || isPasting) && (
-                  <div className="absolute inset-0 bg-background/80 flex items-center justify-center rounded-lg">
-                    <div className="text-sm">
-                      {isPasting ? 'Processing pasted image...' : 'Processing image...'}
+                >
+                  <Textarea
+                    id="qr-data"
+                    placeholder="00020101021126580014A000000677010111011500000000000052040000530370654041.005802PH5913MERCHANT NAME6009MAKATICITY61051226062070703***6304"
+                    value={qrData}
+                    onChange={(e) => setQrData(e.target.value)}
+                    className="font-mono text-sm resize-none min-h-[150px]"
+                    rows={4}
+                  />
+                  {(isProcessing || isPasting) && (
+                    <div className="absolute inset-0 bg-background/80 flex items-center justify-center rounded-lg">
+                      <div className="text-sm">
+                        {isPasting ? 'Processing pasted image...' : 'Processing image...'}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="qr-data">QR Code Data</Label>
-                <Textarea
-                  id="qr-data"
-                  placeholder="00020101021126580014A000000677010111011500000000000052040000530370654041.005802PH5913MERCHANT NAME6009MAKATICITY61051226062070703***6304"
-                  value={qrData}
-                  onChange={(e) => setQrData(e.target.value)}
-                  className="font-mono text-sm resize-none min-h-[150px]"
-                  rows={4}
-                />
+                  )}
+                </div>
               </div>
 
               {/* Action Buttons */}
