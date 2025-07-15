@@ -473,9 +473,23 @@ export default function QRCodeParser() {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Camera API not supported in this browser')
       }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-      })
+      let stream: MediaStream | null = null
+      const videoConstraints = {
+        facingMode: { exact: 'environment' },
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: videoConstraints,
+        })
+      } catch (error) {
+        if (error instanceof Error && error.name === 'OverconstrainedError') {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true, // Fallback to basic video constraints
+          })
+          return
+        }
+        throw error
+      }
       setCameraPermission('granted')
       videoRef.current.srcObject = stream
       videoRef.current.play()
