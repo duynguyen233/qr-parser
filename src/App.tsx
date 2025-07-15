@@ -847,7 +847,7 @@ export default function QRCodeParser() {
 
       const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
-          e.currentTarget.blur() // Blur the input to trigger onBlur and commit
+          e.currentTarget.blur()
         }
       }, [])
 
@@ -902,7 +902,7 @@ export default function QRCodeParser() {
                           <span className="sr-only">Add Subfield</span>
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="max-h-60 overflow-y-auto p-0">
+                      <DropdownMenuContent align="end" className="max-h-60 overflow-y-hidden p-0">
                         <Command>
                           <CommandInput placeholder="Search subfields..." />
                           <CommandList>
@@ -1221,14 +1221,14 @@ export default function QRCodeParser() {
                       Add Field
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="max-h-60 overflow-y-auto p-0">
+                  <DropdownMenuContent align="end" className="overflow-y-auto p-0">
                     <Command>
                       <CommandInput
                         placeholder="Search fields..."
                         value={addRootFieldSearchValue}
                         onValueChange={setAddRootFieldSearchValue}
                       />
-                      <CommandList>
+                      <CommandList className="max-h-40">
                         <CommandEmpty>No fields found.</CommandEmpty>
                         <CommandGroup>
                           {getAllowedFieldIds()
