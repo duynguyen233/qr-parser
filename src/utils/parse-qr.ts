@@ -281,6 +281,7 @@ function validateCRC(data: ParsedDataObject[]) {
     dataWithoutCRC + `${crcChecksum.id}${crcChecksum.length}`,
   )
     .toString(16)
+    .padStart(4, '0')
     .toUpperCase()
   if (checkSumValue !== crcChecksum.value) {
     throw new Error(`CRC checksum mismatch: expected ${checkSumValue}, got ${crcChecksum.value}`)
@@ -326,9 +327,8 @@ export function updateCRCInParsedObject(currentQrObject: ParsedDataObject[]): Pa
   const updatedQrObject = JSON.parse(JSON.stringify(currentQrObject)) // Deep copy to avoid direct mutation
   const crcObject = updatedQrObject[crcIndex]
 
-  // Update the value and length of the CRC object
   crcObject.value = newCrcValue
-  crcObject.length = newCrcValue.length.toString().padStart(2, '0') // Should be '04'
+  crcObject.length = newCrcValue.length.toString().padStart(2, '0')
 
   return updatedQrObject
 }

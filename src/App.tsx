@@ -2,16 +2,23 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { getAllowedFieldIds, getDefinition } from '@/constants/emvco'
 import type { ParsedDataObject } from '@/types/parsed-object'
 import { parseQRCode, updateCRCInParsedObject, validateCRC } from '@/utils/parse-qr'
 import jsQR from 'jsqr'
@@ -22,12 +29,103 @@ import {
   ClipboardCheck,
   Copy,
   Download,
+  Plus,
   QrCode,
+  Trash,
   Upload,
   X,
 } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'react-qr-code'
+
+// Helper to create a new ParsedDataObject based on definition
+const createNewDataObject = (id: string, definition: any): ParsedDataObject => {
+  const newObject: ParsedDataObject = {
+    id: id,
+    length: '00', // Default to 0 length for new fields
+    value: '', // Default to empty value for new fields
+    name: definition.name,
+    description: definition.description,
+    format: definition.format,
+  }
+  if (definition.subFields) {
+    newObject.children = [] // Initialize children array if it's a template
+  }
+  return newObject
+}
+
+// Recursive function to update the qrObject state for add/delete operations
+const updateQrObjectRecursive = (
+  objects: ParsedDataObject[],
+  targetPath: string[],
+  action: 'add' | 'delete',
+  newFieldId?: string,
+  newFieldDefinition?: any,
+): ParsedDataObject[] => {
+  if (targetPath.length === 0) {
+    // This is the root level for adding a new root field
+    if (action === 'add' && newFieldId && newFieldDefinition) {
+      const newField = createNewDataObject(newFieldId, newFieldDefinition)
+      return [...objects, newField].sort((a, b) => Number.parseInt(a.id) - Number.parseInt(b.id))
+    }
+    // For delete at root, it means the targetPath was just [id]
+    // This case is handled by the filter below after the map
+    return objects
+  }
+
+  const [currentId, ...restPath] = targetPath
+  let changed = false
+  const newObjects = objects
+    .map((obj) => {
+      if (obj.id === currentId) {
+        if (restPath.length === 0) {
+          // This is the target object itself (for deletion) or the parent (for adding a child)
+          if (action === 'delete') {
+            changed = true
+            return null // Mark for deletion
+          } else if (action === 'add' && newFieldId && newFieldDefinition) {
+            // This is the parent where a new child needs to be added
+            const newChild = createNewDataObject(newFieldId, newFieldDefinition)
+            const updatedChildren = [...(obj.children || []), newChild].sort(
+              (a, b) => Number.parseInt(a.id) - Number.parseInt(b.id),
+            )
+            const childrenData = updatedChildren.map((c) => `${c.id}${c.length}${c.value}`).join('')
+            changed = true
+            return {
+              ...obj,
+              children: updatedChildren,
+              value: childrenData,
+              length: childrenData.length.toString().padStart(2, '0'),
+            }
+          }
+        } else if (obj.children) {
+          // Recurse into children
+          const updatedChildren = updateQrObjectRecursive(
+            obj.children,
+            restPath,
+            action,
+            newFieldId,
+            newFieldDefinition,
+          )
+          if (updatedChildren !== obj.children) {
+            const childrenData = updatedChildren.map((c) => `${c.id}${c.length}${c.value}`).join('')
+            changed = true
+            return {
+              ...obj,
+              children: updatedChildren,
+              value: childrenData,
+              length: childrenData.length.toString().padStart(2, '0'),
+            }
+          }
+        }
+      }
+      return obj
+    })
+    .filter(Boolean) as ParsedDataObject[]
+
+  // Sort the new objects by id to maintain order
+  return changed ? newObjects : objects
+}
 
 export default function QRCodeParser() {
   const [qrData, setQrData] = useState('')
@@ -35,21 +133,24 @@ export default function QRCodeParser() {
   const [error, setError] = useState('')
   const [isValid, setIsValid] = useState(false)
   const [copySuccess, setCopySuccess] = useState(false)
+  const [copyImageSuccess, setCopyImageSuccess] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isPasting, setIsPasting] = useState(false)
   const [uploadedImage, setUploadedImage] = useState<string | null>(null)
-  const [isModalOpen, setIsModalOpen] = useState(false)
   const [cameraPermission, setCameraPermission] = useState<'granted' | 'denied' | 'prompt'>(
     'prompt',
   )
-
   const videoRef = useRef<HTMLVideoElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
   const scanIntervalRef = useRef<any>(null)
+
+  // State for the root "Add Field" dropdown search
+  const [addRootFieldOpen, setAddRootFieldOpen] = useState(false)
+  const [addRootFieldSearchValue, setAddRootFieldSearchValue] = useState('')
 
   const handleParse = () => {
     try {
@@ -68,12 +169,11 @@ export default function QRCodeParser() {
       setQRObject(updatedQrObjectWithCRC)
       setIsValid(true) // Now it's valid because we've updated the CRC to match
     } catch (error) {
-      setQRObject([])
       setError(
         'Failed to parse QR code data - ' +
           (error instanceof Error ? error.message : 'Unknown error'),
       )
-      setIsValid(false) // Set to false if initial parsing or validation fails
+      setIsValid(false)
     }
   }
 
@@ -84,6 +184,72 @@ export default function QRCodeParser() {
       setTimeout(() => setCopySuccess(false), 2000)
     } catch (error) {
       setError('Failed to copy to clipboard')
+    }
+  }
+
+  const handleCopyImage = () => {
+    try {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        setError('Failed to create canvas context')
+        return
+      }
+      // Set canvas size (add padding around QR code)
+      const qrSize = 290
+      const padding = 40
+      canvas.width = qrSize + padding * 2
+      canvas.height = qrSize + padding * 2
+
+      // Fill background with white
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      // Get the QR code SVG element
+      const qrSvg = document.querySelector('#qr-code-svg') as SVGElement
+      if (!qrSvg) {
+        setError('QR code not found')
+        return
+      }
+
+      // Convert SVG to canvas
+      const svgData = new XMLSerializer().serializeToString(qrSvg)
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+      const svgUrl = URL.createObjectURL(svgBlob)
+      const img = new window.Image()
+      img.onload = () => {
+        // Draw QR code on canvas with padding
+        ctx.drawImage(img, padding, padding, qrSize, qrSize)
+        // Convert canvas to image and copy to clipboard
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const item = new ClipboardItem({ 'image/png': blob })
+            navigator.clipboard.write([item]).then(
+              () => {
+                setCopyImageSuccess(true)
+                setTimeout(() => setCopyImageSuccess(false), 2000)
+              },
+              (err) => {
+                setError('Failed to copy image to clipboard: ' + err.message)
+              },
+            )
+          } else {
+            setError('Failed to create image blob from canvas')
+          }
+        }, 'image/png')
+
+        // Clean up
+        URL.revokeObjectURL(svgUrl)
+      }
+      img.onerror = () => {
+        setError('Failed to load QR code for download')
+        URL.revokeObjectURL(svgUrl)
+      }
+      img.src = svgUrl
+    } catch (error) {
+      setError(
+        'Failed to download QR code: ' + (error instanceof Error ? error.message : 'Unknown error'),
+      )
     }
   }
 
@@ -126,7 +292,6 @@ export default function QRCodeParser() {
       const svgData = new XMLSerializer().serializeToString(qrSvg)
       const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
       const svgUrl = URL.createObjectURL(svgBlob)
-
       const img = new window.Image()
       img.onload = () => {
         // Draw QR code on canvas with padding
@@ -192,6 +357,7 @@ export default function QRCodeParser() {
       setQrData(qrData)
       handleParseData(qrData)
     } catch (error) {
+      console.log('Error processing image file:', error)
       setError(
         error instanceof Error
           ? error.message
@@ -214,7 +380,6 @@ export default function QRCodeParser() {
 
   const handleParseData = (data: string) => {
     try {
-      setError('')
       if (!data) {
         return
       }
@@ -224,12 +389,12 @@ export default function QRCodeParser() {
       setQRObject(updatedQrObjectWithCRC)
       setIsValid(true) // Now it's valid because we've updated the CRC to match
     } catch (error) {
+      console.log('Error parsing QR code data:', error)
       setError(
         'Failed to parse QR code data - ' +
           (error instanceof Error ? error.message : 'Unknown error'),
       )
-      setQRObject([])
-      setIsValid(false) // Set to false if initial parsing or validation fails
+      setIsValid(false)
     }
   }
 
@@ -261,8 +426,7 @@ export default function QRCodeParser() {
 
   // Clipboard paste handlers
   const handlePaste = async (e: React.ClipboardEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
+    handleClear()
     setIsPasting(true)
     setError('')
     try {
@@ -273,59 +437,22 @@ export default function QRCodeParser() {
       if (imageItem) {
         const file = imageItem.getAsFile()
         if (file) {
+          console.log('Pasting image from clipboard:', file.name)
           await processImageFile(file)
         } else {
           setError('Failed to get image from clipboard')
         }
-      } else if (textItem) {
-        textItem.getAsString((text) => {
-          setQrData(text)
-          handleParseData(text) // Parse pasted text data
-        })
-      } else {
+      } else if (!textItem) {
         setError('No image or text found in clipboard. Please copy an image or text first.')
       }
     } catch (error) {
+      console.log('Error pasting content:', error)
       setError(
         'Failed to process pasted content: ' +
           (error instanceof Error ? error.message : 'Unknown error'),
       )
     } finally {
       setIsPasting(false)
-    }
-  }
-
-  // Global paste handler
-  const handleGlobalPaste = async (e: KeyboardEvent) => {
-    // Only trigger if Ctrl+V is pressed and the dropZoneRef is the active element
-    if (e.ctrlKey && e.key === 'v' && document.activeElement === dropZoneRef.current) {
-      try {
-        const clipboardItems = await navigator.clipboard.read()
-        for (const clipboardItem of clipboardItems) {
-          for (const type of clipboardItem.types) {
-            if (type.startsWith('image/')) {
-              setIsPasting(true)
-              const blob = await clipboardItem.getType(type)
-              const file = new File([blob], 'pasted-image.png', { type })
-              await processImageFile(file)
-              setIsPasting(false)
-              return
-            } else if (type === 'text/plain') {
-              setIsPasting(true)
-              const textBlob = await clipboardItem.getType(type)
-              const text = await textBlob.text()
-              setQrData(text)
-              handleParseData(text)
-              setIsPasting(false)
-              return
-            }
-          }
-        }
-        setError('No image or text found in clipboard. Please copy an image or text first.')
-      } catch (error) {
-        setIsPasting(false)
-        setError('Failed to access clipboard. Please try pasting directly in the drop zone.')
-      }
     }
   }
 
@@ -499,7 +626,6 @@ export default function QRCodeParser() {
           let changed = false // Flag to track if any item in this level changed
           const newItems = items.map((item) => {
             let updatedItem = item // Start with original item reference
-
             if (item.id === id && JSON.stringify(currentPath) === JSON.stringify(objectPath)) {
               // Only update if value or length actually changed
               if (
@@ -546,31 +672,75 @@ export default function QRCodeParser() {
           return changed ? newItems : items
         }
         const updated = updateRecursive(prev, [])
-
         return updateCRCInParsedObject(updated)
       })
     },
     [], // No dependencies needed as it uses functional update for setQRObject
   )
 
+  const handleAddRootField = (fieldId: string) => {
+    const definition = getDefinition(fieldId)
+    if (definition) {
+      setQRObject((prev) => {
+        const updated = updateQrObjectRecursive(prev, [], 'add', fieldId, definition)
+        return updateCRCInParsedObject(updated).sort((a, b) => {
+          return Number.parseInt(a.id) - Number.parseInt(b.id)
+        })
+      })
+    } else {
+      setError(`Definition for field ID ${fieldId} not found.`)
+    }
+  }
+
+  const handleAddSubField = (parentPath: string[], subFieldId: string) => {
+    setQRObject((prev) => {
+      let currentDefinition: any = null
+      // Traverse the path to find the parent's definition
+      for (let i = 0; i < parentPath.length; i++) {
+        const id = parentPath[i]
+        currentDefinition = getDefinition(id, currentDefinition)
+        if (!currentDefinition || !currentDefinition.subFields) {
+          setError(`Parent field ${id} does not support subfields.`)
+          return prev
+        }
+      }
+      const subFieldDefinition = getDefinition(subFieldId, currentDefinition)
+      if (!subFieldDefinition) {
+        setError(`Definition for subfield ID ${subFieldId} not found under parent.`)
+        return prev
+      }
+      const updated = updateQrObjectRecursive(
+        prev,
+        parentPath, // The path to the parent where the child will be added
+        'add',
+        subFieldId,
+        subFieldDefinition,
+      )
+      return updateCRCInParsedObject(updated).sort((a, b) => {
+        return Number.parseInt(a.id) - Number.parseInt(b.id)
+      })
+    })
+  }
+
+  const handleDeleteField = (objectPath: string[]) => {
+    setQRObject((prev) => {
+      const updated = updateQrObjectRecursive(prev, objectPath, 'delete')
+      return updateCRCInParsedObject(updated)
+    })
+  }
+
   const openFileDialog = () => {
     fileInputRef.current?.click()
   }
 
   useEffect(() => {
-    document.addEventListener('keydown', handleGlobalPaste)
-    return () => {
-      stopCamera()
-      document.removeEventListener('keydown', handleGlobalPaste)
-    }
-  }, [])
-
-  // Effect to keep qrData in sync with qrObject and debounce CRC calculation
-  useEffect(() => {
     const reconstructQrData = (objects: ParsedDataObject[]): string => {
       return objects
         .map((obj) => {
-          return `${obj.id}${obj.length}${obj.value}`
+          const childrenData =
+            obj.children && obj.children.length > 0 ? reconstructQrData(obj.children) : obj.value
+          const length = childrenData.length.toString().padStart(2, '0')
+          return `${obj.id}${length}${childrenData}`
         })
         .join('')
     }
@@ -593,7 +763,6 @@ export default function QRCodeParser() {
           setIsValid(false)
         }
       }, 500) // Debounce by 500ms
-
       return () => {
         clearTimeout(handler)
       }
@@ -604,26 +773,56 @@ export default function QRCodeParser() {
     }
   }, [qrObject]) // This effect runs whenever qrObject changes
 
+  interface DataObjectLineProps {
+    dataObject: ParsedDataObject
+    indent?: number
+    path?: string[]
+    onValueCommit: (id: string, newValue: string, objectPath: string[]) => void
+    onAddSubField: (parentPath: string[], subFieldId: string) => void
+    onDeleteField: (objectPath: string[]) => void
+  }
+
   const DataObjectLine = React.memo(
-    ({
+    function DataObjectLine({
       dataObject,
       indent = 0,
       path = [],
-      onValueCommit, // New prop
-    }: {
-      dataObject: ParsedDataObject
-      indent?: number
-      path?: string[]
-      onValueCommit: (id: string, newValue: string, objectPath: string[]) => void // Type for new prop
-    }) => {
+      onValueCommit,
+      onAddSubField,
+      onDeleteField,
+    }: DataObjectLineProps) {
+      // Local state for the input value
       const [localValue, setLocalValue] = useState(dataObject.value || '')
+      // State to track if the input is currently focused/being edited
       const [isEditing, setIsEditing] = useState(false)
-      const inputRef = useRef<HTMLInputElement>(null)
 
       // Memoize the path to prevent unnecessary re-renders
       const stablePath = useMemo(() => path, [path.join('-')])
+      const fullPath = useMemo(() => [...path, dataObject.id], [path, dataObject.id])
 
-      // Update local value when dataObject.value changes (but not when we're actively editing)
+      const indentStr = useMemo(() => '. '.repeat(indent), [indent])
+
+      const currentDefinition = useMemo(() => {
+        let def: any = null
+        for (const pId of path) {
+          def = getDefinition(pId, def)
+        }
+        return getDefinition(dataObject.id, def)
+      }, [dataObject.id, path])
+
+      const hasSubFields = useMemo(() => {
+        return currentDefinition && currentDefinition.subFields
+      }, [currentDefinition])
+
+      const allowedSubFieldIds = useMemo(() => {
+        return hasSubFields ? getAllowedFieldIds(currentDefinition) : []
+      }, [hasSubFields, currentDefinition])
+
+      const hasPayloadDescription = useMemo(() => {
+        return currentDefinition && currentDefinition.payload_description
+      }, [currentDefinition])
+
+      // Update local value when dataObject.value changes from props, but only if not editing
       useEffect(() => {
         if (!isEditing) {
           setLocalValue(dataObject.value || '')
@@ -652,43 +851,97 @@ export default function QRCodeParser() {
         }
       }, [])
 
-      const indentStr = useMemo(() => '. '.repeat(indent), [indent])
-
-      // A field is editable if it has a value - regardless of whether it has children
-      const isEditable = useMemo(
-        () => dataObject.value !== undefined && dataObject.value !== '',
-        [dataObject.value],
-      )
-
       return (
-        <div className="p-0">
+        <div className="p-0 bg-transparent">
           <Tooltip>
             <TooltipTrigger asChild>
               {/* Combined static text and input on one line */}
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 bg-transparent group">
                 {' '}
-                {/* Use flex and items-center for alignment */}
+                {/* Added group for hover effects */}
                 <span className="font-mono text-sm whitespace-nowrap">
                   {indentStr}
                   {dataObject.id} {dataObject.length}
                 </span>{' '}
                 {/* Static ID and Length */}
-                {isEditable && !dataObject.children && (
-                  <Input
-                    ref={inputRef}
-                    value={localValue}
-                    onChange={handleInputChange}
-                    onFocus={handleInputFocus}
-                    onBlur={handleInputBlur}
-                    onKeyDown={handleKeyDown} // Added onKeyDown
-                    className="flex-1 border-none py-0 px-2 outline-none shadow-none h-max bg-muted/50" // flex-1 to take remaining space
-                  />
-                )}
-                {!isEditable && (
-                  <span className="flex-1 font-mono text-sm py-0 px-2 text-muted-foreground">
-                    {dataObject.value || '(structured data)'}
-                  </span>
-                )}
+                {!dataObject.children ? (
+                  <>
+                    <Input
+                      value={localValue} // Use localValue
+                      onChange={handleInputChange} // Update localValue
+                      onFocus={handleInputFocus} // Set isEditing to true
+                      onBlur={handleInputBlur} // Set isEditing to false and commit
+                      onKeyDown={handleKeyDown} // Trigger blur on Enter
+                      className="flex-1 border-none py-0 px-2 outline-none shadow-none h-max bg-none"
+                      list={
+                        hasPayloadDescription
+                          ? `datalist-${dataObject.id}-${fullPath.join('-')}`
+                          : undefined
+                      }
+                    />
+                    {hasPayloadDescription && (
+                      <datalist id={`datalist-${dataObject.id}-${fullPath.join('-')}`}>
+                        {Object.entries(currentDefinition.payload_description).map(
+                          ([key, description]) => (
+                            <option key={key} value={key}>
+                              {description as string}
+                            </option>
+                          ),
+                        )}
+                      </datalist>
+                    )}
+                  </>
+                ) : null}
+                {/* Add/Delete Buttons */}
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {hasSubFields && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-6 w-6">
+                          <Plus className="h-3 w-3" />
+                          <span className="sr-only">Add Subfield</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="max-h-60 overflow-y-auto p-0">
+                        <Command>
+                          <CommandInput placeholder="Search subfields..." />
+                          <CommandList>
+                            <CommandEmpty>No subfields found.</CommandEmpty>
+                            <CommandGroup>
+                              {allowedSubFieldIds
+                                .map((id) => ({
+                                  id,
+                                  name: getDefinition(id, currentDefinition)?.name || 'Unknown',
+                                }))
+                                .filter(({ id, name }) =>
+                                  `${id} - ${name}`.toLowerCase().includes(''),
+                                )
+                                .map(({ id, name }) => (
+                                  <CommandItem
+                                    key={id}
+                                    onSelect={() => {
+                                      onAddSubField(fullPath, id)
+                                    }}
+                                  >
+                                    {id} - {name}
+                                  </CommandItem>
+                                ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-red-500 hover:text-red-600"
+                    onClick={() => onDeleteField(fullPath)}
+                  >
+                    <Trash className="h-3 w-3" />
+                    <span className="sr-only">Delete Field</span>
+                  </Button>
+                </div>
               </div>
             </TooltipTrigger>
             <TooltipContent side="right">
@@ -707,7 +960,7 @@ export default function QRCodeParser() {
                 {dataObject.format && (
                   <div className="text-gray-300 text-xs mt-1">Format: {dataObject.format}</div>
                 )}
-                {isEditable && (
+                {!dataObject.children && (
                   <div className="text-blue-300 text-xs mt-1">Click to edit value</div>
                 )}
               </div>
@@ -716,17 +969,16 @@ export default function QRCodeParser() {
           {dataObject.children && dataObject.children.length > 0 && (
             <div>
               {dataObject.children.map((child, idx) => {
-                const childPath = useMemo(
-                  () => [...stablePath, dataObject.id],
-                  [stablePath, dataObject.id],
-                )
+                const childPath = useMemo(() => [...fullPath], [fullPath])
                 return (
                   <DataObjectLine
                     key={`${child.id}-${childPath.join('-')}-${idx}`}
                     dataObject={child}
                     indent={indent + 3}
                     path={childPath}
-                    onValueCommit={onValueCommit} // Pass the new prop down
+                    onValueCommit={updateParsedObjectField} // Pass the update function
+                    onAddSubField={onAddSubField}
+                    onDeleteField={onDeleteField}
                   />
                 )
               })}
@@ -744,7 +996,9 @@ export default function QRCodeParser() {
         prevProps.dataObject.length === nextProps.dataObject.length &&
         prevProps.indent === nextProps.indent &&
         (prevProps.path || []).join('-') === (nextProps.path || []).join('-') &&
-        prevProps.onValueCommit === nextProps.onValueCommit // Include the new prop in comparison
+        prevProps.onValueCommit === nextProps.onValueCommit &&
+        prevProps.onAddSubField === nextProps.onAddSubField &&
+        prevProps.onDeleteField === nextProps.onDeleteField
       )
     },
   )
@@ -760,6 +1014,8 @@ export default function QRCodeParser() {
             indent={0}
             path={[]}
             onValueCommit={updateParsedObjectField} // Pass the update function
+            onAddSubField={handleAddSubField}
+            onDeleteField={handleDeleteField}
           />
         ))}
       </div>
@@ -957,38 +1213,83 @@ export default function QRCodeParser() {
             <CardHeader className="relative">
               <CardTitle>Parsed QR Format (Editable)</CardTitle>
               <CardDescription>Edit the structured breakdown of the QR code data</CardDescription>
-              <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                <DialogTrigger asChild>
-                  <Button className="absolute top-0 right-0" disabled={!qrObject.length}>
-                    <QrCode className="h-4 w-4 mr-2" />
-                    Generate QR Code
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Generated QR Code</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="flex justify-center p-4 bg-white rounded-lg border">
-                      <QRCode id="qr-code-svg" value={qrData} size={256} level="H" />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button onClick={downloadQR} className="flex-1">
-                        <Download className="h-4 w-4 mr-2" />
-                        Download PNG
-                      </Button>
-                      <Button onClick={() => setIsModalOpen(false)} variant="outline">
-                        Close
-                      </Button>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
+              <div className="absolute top-4 right-4">
+                <DropdownMenu open={addRootFieldOpen} onOpenChange={setAddRootFieldOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Field
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="max-h-60 overflow-y-auto p-0">
+                    <Command>
+                      <CommandInput
+                        placeholder="Search fields..."
+                        value={addRootFieldSearchValue}
+                        onValueChange={setAddRootFieldSearchValue}
+                      />
+                      <CommandList>
+                        <CommandEmpty>No fields found.</CommandEmpty>
+                        <CommandGroup>
+                          {getAllowedFieldIds()
+                            .filter((id) => !qrObject.some((a) => a.id === id))
+                            .filter((id) =>
+                              `${id} - ${getDefinition(id)?.name || 'Unknown'}`
+                                .toLowerCase()
+                                .includes(addRootFieldSearchValue.toLowerCase()),
+                            )
+                            .map((id) => (
+                              <CommandItem
+                                key={id}
+                                onSelect={() => {
+                                  handleAddRootField(id)
+                                  setAddRootFieldOpen(false)
+                                  setAddRootFieldSearchValue('')
+                                }}
+                              >
+                                {id} - {getDefinition(id)?.name || 'Unknown'}
+                              </CommandItem>
+                            ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="font-mono text-sm">
                 {qrObject.length ? (
-                  <RenderDataObject parseObject={qrObject} />
+                  <div>
+                    <RenderDataObject parseObject={qrObject} />
+                    <div className="flex justify-center p-4 bg-white rounded-lg border mb-2">
+                      <QRCode
+                        id="qr-code-svg"
+                        value={qrObject.map((obj) => `${obj.id}${obj.length}${obj.value}`).join('')}
+                        size={156}
+                        level="H"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button className="flex-1/4" onClick={handleCopyImage}>
+                        {copyImageSuccess ? (
+                          <>
+                            <ClipboardCheck className="h-4 w-4 mr-1" />
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-4 w-4 mr-1" />
+                            Copy
+                          </>
+                        )}
+                      </Button>
+                      <Button onClick={downloadQR} className="flex-3/4">
+                        <Download className="h-4 w-4 mr-2" />
+                        Download PNG
+                      </Button>
+                    </div>
+                  </div>
                 ) : (
                   <p className="text-muted-foreground">No parsed data available</p>
                 )}

@@ -18,8 +18,10 @@ export const DATA_OBJECT_DEFINITIONS: Record<
             name: string
             format: string
             description: string
+            payload_description?: Record<string, string>
           }
         >
+        payload_description?: Record<string, string>
       }
     >
     payload_description?: Record<string, string>
@@ -34,6 +36,10 @@ export const DATA_OBJECT_DEFINITIONS: Record<
     name: 'Point of Initiation Method',
     format: 'N',
     description: `Indicates whether QR is for static (11) or dynamic (12) payment`,
+    payload_description: {
+      '11': 'Static QR Code',
+      '12': 'Dynamic QR Code',
+    },
   },
   '02-25': {
     name: 'Merchant Account Information',
@@ -83,6 +89,9 @@ The value is one of the following:
 • a [UUID] without the hyphen
 (-) separators;
 • a reverse domain name.`,
+        payload_description: {
+          A000000727: 'GUID for NAPAS247',
+        },
       },
       '01': {
         name: 'Payment Network Specific Data',
@@ -96,6 +105,18 @@ Identifier.`,
             name: 'Acquirer ID',
             format: 's',
             description: 'Acquirer identifier',
+            payload_description: {
+              '970436': 'Vietcombank',
+              '970418': 'BIDV',
+              '970448': 'OCB',
+              '970415': 'VietinBank',
+              '970407': 'Techcombank',
+              '970405': 'Agribank',
+              '970419': 'Navibank',
+              '970403': 'Sacombank',
+              '970416': 'ACB',
+              '970454': 'Ban Viet',
+            },
           },
           '01': {
             name: 'Merchant ID',
@@ -267,4 +288,31 @@ Identifier.`,
       },
     },
   },
+}
+
+export const getDefinition = (id: string, parentDefinition?: any) => {
+  const definitions = parentDefinition ? parentDefinition.subFields : DATA_OBJECT_DEFINITIONS
+  for (const key in definitions) {
+    if (key.includes('-')) {
+      const [start, end] = key.split('-').map(Number)
+      const numId = Number(id)
+      if (numId >= start && numId <= end) {
+        return definitions[key]
+      }
+    } else if (key === id) {
+      return definitions[key]
+    }
+  }
+  return null
+}
+
+export const getAllowedFieldIds = (parentDefinition?: any): string[] => {
+  const ids: string[] = []
+  for (let i = 0; i <= 99; i++) {
+    const idStr = i.toString().padStart(2, '0')
+    if (getDefinition(idStr, parentDefinition)) {
+      ids.push(idStr)
+    }
+  }
+  return ids
 }
