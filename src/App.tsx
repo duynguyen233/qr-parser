@@ -25,6 +25,7 @@ import jsQR from 'jsqr'
 import {
   AlertCircle,
   Camera,
+  Check,
   CheckCircle,
   ClipboardCheck,
   Copy,
@@ -155,7 +156,6 @@ export default function QRCodeParser() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
   const scanIntervalRef = useRef<any>(null)
-
   const [addRootFieldOpen, setAddRootFieldOpen] = useState(false)
   const [addRootFieldSearchValue, setAddRootFieldSearchValue] = useState('')
 
@@ -202,6 +202,7 @@ export default function QRCodeParser() {
         setError('Failed to create canvas context')
         return
       }
+
       // Set canvas size (add padding around QR code)
       const qrSize = 290
       const padding = 40
@@ -223,10 +224,12 @@ export default function QRCodeParser() {
       const svgData = new XMLSerializer().serializeToString(qrSvg)
       const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
       const svgUrl = URL.createObjectURL(svgBlob)
+
       const img = new window.Image()
       img.onload = () => {
         // Draw QR code on canvas with padding
         ctx.drawImage(img, padding, padding, qrSize, qrSize)
+
         // Convert canvas to image and copy to clipboard
         canvas.toBlob((blob) => {
           if (blob) {
@@ -299,6 +302,7 @@ export default function QRCodeParser() {
       const svgData = new XMLSerializer().serializeToString(qrSvg)
       const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
       const svgUrl = URL.createObjectURL(svgBlob)
+
       const img = new window.Image()
       img.onload = () => {
         // Draw QR code on canvas with padding
@@ -361,6 +365,7 @@ export default function QRCodeParser() {
         img.onerror = () => reject(new Error('Failed to load image'))
         img.src = imageUrl
       })
+
       setQrData(qrData)
       handleParseData(qrData)
     } catch (error) {
@@ -476,10 +481,12 @@ export default function QRCodeParser() {
         )
         return
       }
+
       if (!videoRef.current) return
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Camera API not supported in this browser')
       }
+
       let stream: MediaStream | null = null
       const videoConstraints = {
         facingMode: { exact: 'environment' },
@@ -495,6 +502,7 @@ export default function QRCodeParser() {
           })
         } else throw error
       }
+
       setCameraPermission('granted')
       videoRef.current.srcObject = stream
       videoRef.current.play()
@@ -731,6 +739,7 @@ export default function QRCodeParser() {
         setError(`Definition for subfield ID ${subFieldId} not found under parent.`)
         return prev
       }
+
       const updated = updateQrObjectRecursive(
         prev,
         parentPath, // The path to the parent where the child will be added
@@ -788,6 +797,7 @@ export default function QRCodeParser() {
           setIsValid(false)
         }
       }, 500) // Debounce by 500ms
+
       return () => {
         clearTimeout(handler)
       }
@@ -817,14 +827,14 @@ export default function QRCodeParser() {
       onDeleteField,
     }: DataObjectLineProps) {
       // Local state for the input value
+      const localValueRef = useRef(dataObject.value || '')
       const [localValue, setLocalValue] = useState(dataObject.value || '')
       // State to track if the input is currently focused/being edited
-      const [isEditing, setIsEditing] = useState(false)
+      const [isEditing, setIsEditing] = useState(false) // New state for edit mode
 
       // Memoize the path to prevent unnecessary re-renders
       const stablePath = useMemo(() => path, [path.join('-')])
       const fullPath = useMemo(() => [...path, dataObject.id], [path, dataObject.id])
-
       const indentStr = useMemo(() => '. '.repeat(indent), [indent])
 
       const currentDefinition = useMemo(() => {
@@ -851,28 +861,30 @@ export default function QRCodeParser() {
       useEffect(() => {
         if (!isEditing) {
           setLocalValue(dataObject.value || '')
+          localValueRef.current = dataObject.value || ''
         }
       }, [dataObject.value, isEditing])
 
       const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         setLocalValue(e.target.value) // Only update local state
+        localValueRef.current = e.target.value
       }, [])
 
-      const handleInputFocus = useCallback(() => {
-        setIsEditing(true)
-      }, [])
-
-      const handleInputBlur = useCallback(() => {
-        setIsEditing(false)
-        // Only commit if the local value has actually changed from the prop value
+      const handleCommitEdit = useCallback(() => {
         if (localValue !== dataObject.value) {
           onValueCommit(dataObject.id, localValue, stablePath)
         }
+        setIsEditing(false) // Exit editing mode after commit
       }, [dataObject.id, localValue, stablePath, onValueCommit, dataObject.value])
+
+      const handleInputBlur = useCallback(() => {
+        // Commit changes on blur if the value has changed
+        handleCommitEdit()
+      }, [handleCommitEdit])
 
       const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
-          e.currentTarget.blur()
+          e.currentTarget.blur() // This will trigger handleInputBlur
         }
       }, [])
 
@@ -890,13 +902,15 @@ export default function QRCodeParser() {
                 </span>{' '}
                 {/* Static ID and Length */}
                 {!dataObject.children ? (
-                  <>
+                  <div className="flex items-center flex-1">
                     <Input
-                      value={localValue} // Use localValue
-                      onChange={handleInputChange} // Update localValue
-                      onFocus={handleInputFocus} // Set isEditing to true
-                      onBlur={handleInputBlur} // Set isEditing to false and commit
-                      onKeyDown={handleKeyDown} // Trigger blur on Enter
+                      value={localValue}
+                      onChange={handleInputChange}
+                      onFocus={() => setIsEditing(true)} // Enter edit mode on focus
+                      onBlur={handleInputBlur} // Commit and exit edit mode on blur
+                      onKeyDown={handleKeyDown}
+                      readOnly={!isEditing} // Make it read-only when not editing
+                      onClick={() => setIsEditing(true)} // Allow clicking to enter edit mode
                       className="flex-1 border-none py-0 px-2 outline-none shadow-none h-max bg-none"
                       list={
                         hasPayloadDescription
@@ -915,7 +929,18 @@ export default function QRCodeParser() {
                         )}
                       </datalist>
                     )}
-                  </>
+                    {isEditing && ( // Show tick button only when editing
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 ml-1"
+                        onClick={handleCommitEdit} // Commit and exit edit mode on click
+                      >
+                        <Check className="h-3 w-3" />
+                        <span className="sr-only">Confirm Edit</span>
+                      </Button>
+                    )}
+                  </div>
                 ) : null}
                 {/* Add/Delete Buttons */}
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -934,6 +959,9 @@ export default function QRCodeParser() {
                             <CommandEmpty>No subfields found.</CommandEmpty>
                             <CommandGroup>
                               {allowedSubFieldIds
+                                .filter(
+                                  (id) => !dataObject.children?.some((child) => child.id === id),
+                                )
                                 .map((id) => ({
                                   id,
                                   name: getDefinition(id, currentDefinition)?.name || 'Unknown',
