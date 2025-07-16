@@ -66,7 +66,12 @@ const updateQrObjectRecursive = (
     // This is the root level for adding a new root field
     if (action === 'add' && newFieldId && newFieldDefinition) {
       const newField = createNewDataObject(newFieldId, newFieldDefinition)
-      return [...objects, newField].sort((a, b) => Number.parseInt(a.id) - Number.parseInt(b.id))
+      return [...objects, newField].sort((a, b) => {
+        if (a.id === '63' || b.id === '63') {
+          return a.id === '63' ? 1 : -1 // Ensure field 63 (CRC) is always last
+        }
+        return Number.parseInt(a.id) - Number.parseInt(b.id)
+      })
     }
     // For delete at root, it means the targetPath was just [id]
     // This case is handled by the filter below after the map
@@ -86,9 +91,12 @@ const updateQrObjectRecursive = (
           } else if (action === 'add' && newFieldId && newFieldDefinition) {
             // This is the parent where a new child needs to be added
             const newChild = createNewDataObject(newFieldId, newFieldDefinition)
-            const updatedChildren = [...(obj.children || []), newChild].sort(
-              (a, b) => Number.parseInt(a.id) - Number.parseInt(b.id),
-            )
+            const updatedChildren = [...(obj.children || []), newChild].sort((a, b) => {
+              if (a.id === '63' || b.id === '63') {
+                return a.id === '63' ? 1 : -1 // Ensure field 63 (CRC) is always last
+              }
+              return Number.parseInt(a.id) - Number.parseInt(b.id)
+            })
             const childrenData = updatedChildren.map((c) => `${c.id}${c.length}${c.value}`).join('')
             changed = true
             return {
@@ -148,7 +156,6 @@ export default function QRCodeParser() {
   const dropZoneRef = useRef<HTMLDivElement>(null)
   const scanIntervalRef = useRef<any>(null)
 
-  // State for the root "Add Field" dropdown search
   const [addRootFieldOpen, setAddRootFieldOpen] = useState(false)
   const [addRootFieldSearchValue, setAddRootFieldSearchValue] = useState('')
 
@@ -486,9 +493,7 @@ export default function QRCodeParser() {
           stream = await navigator.mediaDevices.getUserMedia({
             video: true, // Fallback to basic video constraints
           })
-          return
-        }
-        throw error
+        } else throw error
       }
       setCameraPermission('granted')
       videoRef.current.srcObject = stream
@@ -698,6 +703,9 @@ export default function QRCodeParser() {
       setQRObject((prev) => {
         const updated = updateQrObjectRecursive(prev, [], 'add', fieldId, definition)
         return updateCRCInParsedObject(updated).sort((a, b) => {
+          if (a.id === '63' || b.id === '63') {
+            return a.id === '63' ? 1 : -1 // Ensure field 63 (CRC) is always last
+          }
           return Number.parseInt(a.id) - Number.parseInt(b.id)
         })
       })
@@ -731,6 +739,9 @@ export default function QRCodeParser() {
         subFieldDefinition,
       )
       return updateCRCInParsedObject(updated).sort((a, b) => {
+        if (a.id === '63' || b.id === '63') {
+          return a.id === '63' ? 1 : -1 // Ensure field 63 (CRC) is always last
+        }
         return Number.parseInt(a.id) - Number.parseInt(b.id)
       })
     })
@@ -933,6 +944,7 @@ export default function QRCodeParser() {
                                 .map(({ id, name }) => (
                                   <CommandItem
                                     key={id}
+                                    value={id}
                                     onSelect={() => {
                                       onAddSubField(fullPath, id)
                                     }}
@@ -973,9 +985,6 @@ export default function QRCodeParser() {
                 )}
                 {dataObject.format && (
                   <div className="text-gray-300 text-xs mt-1">Format: {dataObject.format}</div>
-                )}
-                {!dataObject.children && (
-                  <div className="text-blue-300 text-xs mt-1">Click to edit value</div>
                 )}
               </div>
             </TooltipContent>
@@ -1255,6 +1264,7 @@ export default function QRCodeParser() {
                             .map((id) => (
                               <CommandItem
                                 key={id}
+                                value={id}
                                 onSelect={() => {
                                   handleAddRootField(id)
                                   setAddRootFieldOpen(false)
