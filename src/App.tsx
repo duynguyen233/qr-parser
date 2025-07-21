@@ -20,7 +20,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { getAllowedFieldIds, getDefinition } from '@/constants/emvco'
 import type { ParsedDataObject } from '@/types/parsed-object'
-import { parseQRCode, updateCRCInParsedObject, validateCRC } from '@/utils/parse-qr'
+import {
+  parseQRCode,
+  updateCRCInParsedObject,
+  updateQrObjectRecursive,
+  validateCRC,
+} from '@/utils/parse-qr'
 import jsQR from 'jsqr'
 import {
   AlertCircle,
@@ -38,103 +43,6 @@ import {
 } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'react-qr-code'
-
-// Helper to create a new ParsedDataObject based on definition
-const createNewDataObject = (id: string, definition: any): ParsedDataObject => {
-  const newObject: ParsedDataObject = {
-    id: id,
-    length: '00', // Default to 0 length for new fields
-    value: '', // Default to empty value for new fields
-    name: definition.name,
-    description: definition.description,
-    format: definition.format,
-  }
-  if (definition.subFields) {
-    newObject.children = [] // Initialize children array if it's a template
-  }
-  return newObject
-}
-
-// Recursive function to update the qrObject state for add/delete operations
-const updateQrObjectRecursive = (
-  objects: ParsedDataObject[],
-  targetPath: string[],
-  action: 'add' | 'delete',
-  newFieldId?: string,
-  newFieldDefinition?: any,
-): ParsedDataObject[] => {
-  if (targetPath.length === 0) {
-    // This is the root level for adding a new root field
-    if (action === 'add' && newFieldId && newFieldDefinition) {
-      const newField = createNewDataObject(newFieldId, newFieldDefinition)
-      return [...objects, newField].sort((a, b) => {
-        if (a.id === '63' || b.id === '63') {
-          return a.id === '63' ? 1 : -1 // Ensure field 63 (CRC) is always last
-        }
-        return Number.parseInt(a.id) - Number.parseInt(b.id)
-      })
-    }
-    // For delete at root, it means the targetPath was just [id]
-    // This case is handled by the filter below after the map
-    return objects
-  }
-
-  const [currentId, ...restPath] = targetPath
-  let changed = false
-  const newObjects = objects
-    .map((obj) => {
-      if (obj.id === currentId) {
-        if (restPath.length === 0) {
-          // This is the target object itself (for deletion) or the parent (for adding a child)
-          if (action === 'delete') {
-            changed = true
-            return null // Mark for deletion
-          } else if (action === 'add' && newFieldId && newFieldDefinition) {
-            // This is the parent where a new child needs to be added
-            const newChild = createNewDataObject(newFieldId, newFieldDefinition)
-            const updatedChildren = [...(obj.children || []), newChild].sort((a, b) => {
-              if (a.id === '63' || b.id === '63') {
-                return a.id === '63' ? 1 : -1 // Ensure field 63 (CRC) is always last
-              }
-              return Number.parseInt(a.id) - Number.parseInt(b.id)
-            })
-            const childrenData = updatedChildren.map((c) => `${c.id}${c.length}${c.value}`).join('')
-            changed = true
-            return {
-              ...obj,
-              children: updatedChildren,
-              value: childrenData,
-              length: childrenData.length.toString().padStart(2, '0'),
-            }
-          }
-        } else if (obj.children) {
-          // Recurse into children
-          const updatedChildren = updateQrObjectRecursive(
-            obj.children,
-            restPath,
-            action,
-            newFieldId,
-            newFieldDefinition,
-          )
-          if (updatedChildren !== obj.children) {
-            const childrenData = updatedChildren.map((c) => `${c.id}${c.length}${c.value}`).join('')
-            changed = true
-            return {
-              ...obj,
-              children: updatedChildren,
-              value: childrenData,
-              length: childrenData.length.toString().padStart(2, '0'),
-            }
-          }
-        }
-      }
-      return obj
-    })
-    .filter(Boolean) as ParsedDataObject[]
-
-  // Sort the new objects by id to maintain order
-  return changed ? newObjects : objects
-}
 
 export default function QRCodeParser() {
   const [qrData, setQrData] = useState('')
@@ -1292,7 +1200,7 @@ export default function QRCodeParser() {
                             .map((id) => (
                               <CommandItem
                                 key={id}
-                                value={id}
+                                value={addRootFieldSearchValue}
                                 onSelect={() => {
                                   handleAddRootField(id)
                                   setAddRootFieldOpen(false)
@@ -1322,8 +1230,8 @@ export default function QRCodeParser() {
                         level="H"
                       />
                     </div>
-                    <div className="flex gap-2">
-                      <Button className="flex-1/4" onClick={handleCopyImage}>
+                    <div className="grid md:grid-cols-3  xs:grid-cols-1 gap-2">
+                      <Button className="bg-blue-400 hover:bg-blue-500" onClick={handleCopyImage}>
                         {copyImageSuccess ? (
                           <>
                             <ClipboardCheck className="h-4 w-4 mr-1" />
@@ -1336,7 +1244,7 @@ export default function QRCodeParser() {
                           </>
                         )}
                       </Button>
-                      <Button onClick={downloadQR} className="flex-3/4">
+                      <Button onClick={downloadQR} className="md:col-span-2">
                         <Download className="h-4 w-4 mr-2" />
                         Download PNG
                       </Button>

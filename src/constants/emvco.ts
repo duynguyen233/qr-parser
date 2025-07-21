@@ -1,3 +1,4 @@
+import { currencyCodes } from './iso4217'
 import { merchantCategoryCodes } from './mcc'
 
 export const DATA_OBJECT_DEFINITIONS: Record<
@@ -217,7 +218,12 @@ Identifier.`,
     description: '4-digit merchant category code',
     payload_description: merchantCategoryCodes,
   },
-  '53': { name: 'Transaction Currency', format: 'N', description: 'ISO 4217 currency code' },
+  '53': {
+    name: 'Transaction Currency',
+    format: 'N',
+    description: 'ISO 4217 currency code',
+    payload_description: currencyCodes,
+  },
   '54': { name: 'Transaction Amount', format: 'ans', description: 'Transaction amount' },
   '55': {
     name: 'Tip or Convenience Indicator',
@@ -335,6 +341,30 @@ Identifier.`,
         name: 'Reserved for Future Use',
         format: 's',
         description: 'Reserved for future use by EMVCo',
+      },
+    },
+  },
+  '65-79': {
+    name: 'RFU for EMVCo',
+    format: 's',
+    description: 'Reserved for future use by EMVCo',
+  },
+  '80-99': {
+    name: 'Unreserved Templates',
+    format: 's',
+    description:
+      'Unreserved Templates can be allocated and used by other parties, such as (domestic) payment systems and value-added service providers, for their own products.',
+    subFields: {
+      '00': {
+        name: 'Globally Unique',
+        format: 'ans',
+        description: 'An identifier that sets the context',
+      },
+      '01-99': {
+        name: 'Context-Specific Data',
+        format: 's',
+        description:
+          'Association of data objects to IDs and type of data object is specific to the Globally Unique Identifier.',
       },
     },
   },

@@ -333,4 +333,107 @@ export function updateCRCInParsedObject(currentQrObject: ParsedDataObject[]): Pa
   return updatedQrObject
 }
 
-export { calculateCrc16IBM3740, formatParsedData, validateCRC }
+// Helper to create a new ParsedDataObject based on definition
+function createNewDataObject(id: string, definition: any): ParsedDataObject {
+  const newObject: ParsedDataObject = {
+    id: id,
+    length: '00', // Default to 0 length for new fields
+    value: '', // Default to empty value for new fields
+    name: definition.name,
+    description: definition.description,
+    format: definition.format,
+  }
+  if (definition.subFields) {
+    newObject.children = [] // Initialize children array if it's a template
+  }
+  return newObject
+}
+
+// Recursive function to update the qrObject state for add/delete operations
+function updateQrObjectRecursive(
+  objects: ParsedDataObject[],
+  targetPath: string[],
+  action: 'add' | 'delete',
+  newFieldId?: string,
+  newFieldDefinition?: any,
+): ParsedDataObject[] {
+  if (targetPath.length === 0) {
+    // This is the root level for adding a new root field
+    if (action === 'add' && newFieldId && newFieldDefinition) {
+      const newField = createNewDataObject(newFieldId, newFieldDefinition)
+      return [...objects, newField].sort((a, b) => {
+        if (a.id === '63' || b.id === '63') {
+          return a.id === '63' ? 1 : -1 // Ensure field 63 (CRC) is always last
+        }
+        return Number.parseInt(a.id) - Number.parseInt(b.id)
+      })
+    }
+    // For delete at root, it means the targetPath was just [id]
+    // This case is handled by the filter below after the map
+    return objects
+  }
+
+  const [currentId, ...restPath] = targetPath
+  let changed = false
+  const newObjects = objects
+    .map((obj) => {
+      if (obj.id === currentId) {
+        if (restPath.length === 0) {
+          // This is the target object itself (for deletion) or the parent (for adding a child)
+          if (action === 'delete') {
+            changed = true
+            return null // Mark for deletion
+          } else if (action === 'add' && newFieldId && newFieldDefinition) {
+            // This is the parent where a new child needs to be added
+            const newChild = createNewDataObject(newFieldId, newFieldDefinition)
+            const updatedChildren = [...(obj.children || []), newChild].sort((a, b) => {
+              if (a.id === '63' || b.id === '63') {
+                return a.id === '63' ? 1 : -1 // Ensure field 63 (CRC) is always last
+              }
+              return Number.parseInt(a.id) - Number.parseInt(b.id)
+            })
+            const childrenData = updatedChildren.map((c) => `${c.id}${c.length}${c.value}`).join('')
+            changed = true
+            return {
+              ...obj,
+              children: updatedChildren,
+              value: childrenData,
+              length: childrenData.length.toString().padStart(2, '0'),
+            }
+          }
+        } else if (obj.children) {
+          // Recurse into children
+          const updatedChildren = updateQrObjectRecursive(
+            obj.children,
+            restPath,
+            action,
+            newFieldId,
+            newFieldDefinition,
+          )
+          if (updatedChildren !== obj.children) {
+            const childrenData = updatedChildren.map((c) => `${c.id}${c.length}${c.value}`).join('')
+            changed = true
+            return {
+              ...obj,
+              children: updatedChildren,
+              value: childrenData,
+              length: childrenData.length.toString().padStart(2, '0'),
+            }
+          }
+        }
+      }
+      return obj
+    })
+    .filter(Boolean) as ParsedDataObject[]
+
+  // Sort the new objects by id to maintain order
+  return changed ? newObjects : objects
+}
+
+export {
+  calculateCrc16IBM3740,
+  createNewDataObject,
+  formatParsedData,
+  updateQrObjectRecursive,
+  validateCRC,
+}
