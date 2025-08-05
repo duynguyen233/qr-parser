@@ -37,17 +37,4 @@ class QRScanner {
   }
 }
 
-function scanQRCode(file: File): Promise<string> {
-  return QRScanner.scanImage(file)
-    .then((result) => {
-      if (!result) {
-        throw new Error('No QR code found')
-      }
-      return result
-    })
-    .catch((error) => {
-      throw error
-    })
-}
-
-export { QRScanner, scanQRCode }
+export { QRScanner }

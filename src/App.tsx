@@ -42,7 +42,7 @@ import {
   X,
 } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import QRCode from 'react-qr-code'
+const QRCode = React.lazy(() => import('react-qr-code'))
 
 export default function QRCodeParser() {
   const [qrData, setQrData] = useState('')
@@ -739,6 +739,8 @@ export default function QRCodeParser() {
       const [localValue, setLocalValue] = useState(dataObject.value || '')
       // State to track if the input is currently focused/being edited
       const [isEditing, setIsEditing] = useState(false) // New state for edit mode
+      const [addSubFieldOpen, setAddSubFieldOpen] = useState(false)
+      const [addSubFieldSearchValue, setAddSubFieldSearchValue] = useState('')
 
       // Memoize the path to prevent unnecessary re-renders
       const stablePath = useMemo(() => path, [path.join('-')])
@@ -759,7 +761,7 @@ export default function QRCodeParser() {
 
       const allowedSubFieldIds = useMemo(() => {
         return hasSubFields ? getAllowedFieldIds(currentDefinition) : []
-      }, [hasSubFields, currentDefinition])
+      }, [hasSubFields, currentDefinition, addSubFieldSearchValue])
 
       const hasPayloadDescription = useMemo(() => {
         return currentDefinition && currentDefinition.payload_description
@@ -853,16 +855,20 @@ export default function QRCodeParser() {
                 {/* Add/Delete Buttons */}
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   {hasSubFields && (
-                    <DropdownMenu>
+                    <DropdownMenu open={addSubFieldOpen} onOpenChange={setAddSubFieldOpen}>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-6 w-6">
                           <Plus className="h-3 w-3" />
                           <span className="sr-only">Add Subfield</span>
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="max-h-60 overflow-y-hidden p-0">
+                      <DropdownMenuContent align="end" className="overflow-y-auto p-0">
                         <Command>
-                          <CommandInput placeholder="Search subfields..." />
+                          <CommandInput
+                            placeholder="Search subfields..."
+                            value={addSubFieldSearchValue}
+                            onValueChange={setAddSubFieldSearchValue}
+                          />
                           <CommandList>
                             <CommandEmpty>No subfields found.</CommandEmpty>
                             <CommandGroup>
@@ -874,15 +880,13 @@ export default function QRCodeParser() {
                                   id,
                                   name: getDefinition(id, currentDefinition)?.name || 'Unknown',
                                 }))
-                                .filter(({ id, name }) =>
-                                  `${id} - ${name}`.toLowerCase().includes(''),
-                                )
                                 .map(({ id, name }) => (
                                   <CommandItem
                                     key={id}
-                                    value={id}
                                     onSelect={() => {
                                       onAddSubField(fullPath, id)
+                                      setAddSubFieldOpen(false)
+                                      setAddSubFieldSearchValue('') // Clear search after selection
                                     }}
                                   >
                                     {id} - {name}
@@ -1192,15 +1196,9 @@ export default function QRCodeParser() {
                         <CommandGroup>
                           {getAllowedFieldIds()
                             .filter((id) => !qrObject.some((a) => a.id === id))
-                            .filter((id) =>
-                              `${id} - ${getDefinition(id)?.name || 'Unknown'}`
-                                .toLowerCase()
-                                .includes(addRootFieldSearchValue.toLowerCase()),
-                            )
                             .map((id) => (
                               <CommandItem
                                 key={id}
-                                value={addRootFieldSearchValue}
                                 onSelect={() => {
                                   handleAddRootField(id)
                                   setAddRootFieldOpen(false)
