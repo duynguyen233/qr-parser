@@ -1225,7 +1225,7 @@ export default function QRCodeParser() {
                         id="qr-code-svg"
                         value={qrObject.map((obj) => `${obj.id}${obj.length}${obj.value}`).join('')}
                         size={156}
-                        level="H"
+                        level="L"
                       />
                     </div>
                     <div className="grid md:grid-cols-3  xs:grid-cols-1 gap-2">
