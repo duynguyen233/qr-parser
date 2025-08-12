@@ -87,7 +87,12 @@ class QRParser {
       const child = childParser.parseDataObject(parentId, grandParentId)
 
       // Special handling for VietQR field 38, sub-field 01
-      if (parentId === '38' && child.id === '01') {
+      if (
+        parentId === '38' &&
+        child.id === '01' &&
+        children[0]?.id === '00' &&
+        children[0]?.value === 'A000000727'
+      ) {
         // Field 01 in VietQR contains nested sub-fields
         const subFieldDef = subFieldDefs[child.id]
         if (subFieldDef?.subFields) {

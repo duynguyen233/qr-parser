@@ -26,7 +26,7 @@ import {
   updateQrObjectRecursive,
   validateCRC,
 } from '@/utils/parse-qr'
-import jsQR from 'jsqr'
+import jsQR from 'jsqr-es6'
 import {
   AlertCircle,
   Camera,
@@ -252,7 +252,9 @@ export default function QRCodeParser() {
       const ctx = canvas.getContext('2d')
       const img = new window.Image()
       img.crossOrigin = 'anonymous' // Set crossOrigin to avoid CORS issues [^vercel_knowledge_base]
-
+      if (!ctx) {
+        throw new Error('Failed to create canvas context')
+      }
       const qrData = await new Promise<string>((resolve, reject) => {
         img.onload = () => {
           canvas.width = img.width
@@ -265,6 +267,22 @@ export default function QRCodeParser() {
           }
           const qrCode = jsQR(imageData.data, imageData.width, imageData.height)
           if (qrCode) {
+            setUploadedImage(imageUrl)
+            // Draw a red rectangle around the detected QR code area on the preview image
+            if (qrCode && qrCode.location) {
+              const { location } = qrCode
+              ctx.strokeStyle = 'red'
+              ctx.lineWidth = 4
+              ctx.beginPath()
+              ctx.moveTo(location.topLeftCorner.x, location.topLeftCorner.y)
+              ctx.lineTo(location.topRightCorner.x, location.topRightCorner.y)
+              ctx.lineTo(location.bottomRightCorner.x, location.bottomRightCorner.y)
+              ctx.lineTo(location.bottomLeftCorner.x, location.bottomLeftCorner.y)
+              ctx.closePath()
+              ctx.stroke()
+              // Save the annotated image as a data URL for preview
+              setUploadedImage(canvas.toDataURL('image/png'))
+            }
             resolve(qrCode.data)
           } else {
             reject(new Error('No QR code found in image'))
@@ -366,7 +384,6 @@ export default function QRCodeParser() {
         setError('No image or text found in clipboard. Please copy an image or text first.')
       }
     } catch (error) {
-      console.log('Error pasting content:', error)
       setError(
         'Failed to process pasted content: ' +
           (error instanceof Error ? error.message : 'Unknown error'),
