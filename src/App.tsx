@@ -240,6 +240,42 @@ export default function QRCodeParser() {
     }
   }
 
+  // Image preprocessing function to improve QR code detection for transparent/low contrast images
+  const preprocessImageForQR = (imageData: ImageData): ImageData => {
+    const data = new Uint8ClampedArray(imageData.data)
+    const width = imageData.width
+    const height = imageData.height
+
+    // Convert to grayscale and apply contrast enhancement
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i]
+      const g = data[i + 1]
+      const b = data[i + 2]
+      const alpha = data[i + 3]
+
+      // Handle transparency by treating transparent pixels as white
+      if (alpha < 128) {
+        data[i] = 255 // R
+        data[i + 1] = 255 // G
+        data[i + 2] = 255 // B
+        data[i + 3] = 255 // A
+      } else {
+        // Convert to grayscale using luminance formula
+        const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b)
+
+        // Apply contrast enhancement (make darks darker, lights lighter)
+        const enhanced = gray < 128 ? Math.max(0, gray - 30) : Math.min(255, gray + 30)
+
+        data[i] = enhanced // R
+        data[i + 1] = enhanced // G
+        data[i + 2] = enhanced // B
+        data[i + 3] = 255 // A
+      }
+    }
+
+    return new ImageData(data, width, height)
+  }
+
   const processImageFile = async (file: File) => {
     setIsProcessing(true)
     setError('')
@@ -259,17 +295,51 @@ export default function QRCodeParser() {
         img.onload = () => {
           canvas.width = img.width
           canvas.height = img.height
+
+          // Handle transparent images by filling with white background first
+          ctx.fillStyle = '#FFFFFF'
+          ctx.fillRect(0, 0, canvas.width, canvas.height)
           ctx?.drawImage(img, 0, 0)
-          const imageData = ctx?.getImageData(0, 0, canvas.width, canvas.height)
+
+          let imageData = ctx?.getImageData(0, 0, canvas.width, canvas.height)
           if (!imageData) {
             reject(new Error('Failed to get image data'))
             return
           }
-          const qrCode = jsQR(imageData.data, imageData.width, imageData.height)
+
+          // Try scanning the image as-is first (white background)
+          let qrCode = jsQR(imageData.data, imageData.width, imageData.height)
+
+          // If not found, try with black background for transparent images
+          if (!qrCode) {
+            ctx.fillStyle = '#000000'
+            ctx.fillRect(0, 0, canvas.width, canvas.height)
+            ctx?.drawImage(img, 0, 0)
+            imageData = ctx?.getImageData(0, 0, canvas.width, canvas.height)
+            if (imageData) {
+              qrCode = jsQR(imageData.data, imageData.width, imageData.height)
+            }
+          }
+
+          // If still not found, try preprocessing the image for better contrast
+          if (!qrCode && imageData) {
+            const processedImageData = preprocessImageForQR(imageData)
+            qrCode = jsQR(
+              processedImageData.data,
+              processedImageData.width,
+              processedImageData.height,
+            )
+          }
+
           if (qrCode) {
             setUploadedImage(imageUrl)
             // Draw a red rectangle around the detected QR code area on the preview image
             if (qrCode && qrCode.location) {
+              // Redraw the original image for annotation
+              ctx.fillStyle = '#FFFFFF'
+              ctx.fillRect(0, 0, canvas.width, canvas.height)
+              ctx?.drawImage(img, 0, 0)
+
               const { location } = qrCode
               ctx.strokeStyle = 'red'
               ctx.lineWidth = 4
@@ -1234,40 +1304,36 @@ export default function QRCodeParser() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="font-mono text-sm">
-                {qrObject.length ? (
-                  <div>
-                    <RenderDataObject parseObject={qrObject} />
-                    <div className="flex justify-center p-4 bg-white rounded-lg border mb-2">
-                      <QRCode
-                        id="qr-code-svg"
-                        value={qrObject.map((obj) => `${obj.id}${obj.length}${obj.value}`).join('')}
-                        size={156}
-                        level="L"
-                      />
+                <div>
+                  {qrObject.length !== 0 && <RenderDataObject parseObject={qrObject} />}
+
+                  {qrData && (
+                    <div>
+                      <div className="flex justify-center p-4 bg-white rounded-lg border mb-2">
+                        <QRCode id="qr-code-svg" value={qrData} size={156} level="L" />
+                      </div>
+                      <div className="grid md:grid-cols-3  xs:grid-cols-1 gap-2">
+                        <Button className="bg-blue-400 hover:bg-blue-500" onClick={handleCopyImage}>
+                          {copyImageSuccess ? (
+                            <>
+                              <ClipboardCheck className="h-4 w-4 mr-1" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-4 w-4 mr-1" />
+                              Copy
+                            </>
+                          )}
+                        </Button>
+                        <Button onClick={downloadQR} className="md:col-span-2">
+                          <Download className="h-4 w-4 mr-2" />
+                          Download PNG
+                        </Button>
+                      </div>
                     </div>
-                    <div className="grid md:grid-cols-3  xs:grid-cols-1 gap-2">
-                      <Button className="bg-blue-400 hover:bg-blue-500" onClick={handleCopyImage}>
-                        {copyImageSuccess ? (
-                          <>
-                            <ClipboardCheck className="h-4 w-4 mr-1" />
-                            Copied!
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="h-4 w-4 mr-1" />
-                            Copy
-                          </>
-                        )}
-                      </Button>
-                      <Button onClick={downloadQR} className="md:col-span-2">
-                        <Download className="h-4 w-4 mr-2" />
-                        Download PNG
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">No parsed data available</p>
-                )}
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
