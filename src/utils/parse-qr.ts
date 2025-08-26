@@ -52,10 +52,6 @@ class QRParser {
     // Get metadata from definitions
     const definition = this.getDefinition(id, parentId, grandParentId)
     let description = definition?.description
-    if (definition?.payload_description) {
-      const payloadDescription = definition.payload_description[value] || value
-      description = definition.description + `\n${value}: ${payloadDescription}`
-    }
 
     const dataObject: ParsedDataObject = {
       id,

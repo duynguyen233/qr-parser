@@ -637,7 +637,6 @@ export default function QRCodeParser() {
     }
   }
 
-  // Modified: This function now only updates the qrObject state without recalculating CRC
   const updateParsedObjectField = useCallback(
     (id: string, newValue: string, objectPath: string[]) => {
       setQRObject((prev) => {
@@ -697,7 +696,7 @@ export default function QRCodeParser() {
         return updateCRCInParsedObject(updated)
       })
     },
-    [], // No dependencies needed as it uses functional update for setQRObject
+    [],
   )
 
   const handleAddRootField = (fieldId: string) => {
@@ -840,7 +839,7 @@ export default function QRCodeParser() {
           def = getDefinition(pId, def)
         }
         return getDefinition(dataObject.id, def)
-      }, [dataObject.id, path])
+      }, [dataObject, path])
 
       const hasSubFields = useMemo(() => {
         return currentDefinition && currentDefinition.subFields
@@ -901,6 +900,7 @@ export default function QRCodeParser() {
                 {!dataObject.children ? (
                   <div className="flex items-center flex-1">
                     <Input
+                      id={`input-${dataObject.id}-${fullPath.join('-')}`}
                       value={localValue}
                       onChange={handleInputChange}
                       onFocus={() => setIsEditing(true)} // Enter edit mode on focus
@@ -1008,6 +1008,14 @@ export default function QRCodeParser() {
                     {dataObject.description?.split('\n').map((line, idx) => (
                       <div key={idx}>{line}</div>
                     ))}
+                    {currentDefinition.payload_description &&
+                      dataObject.value &&
+                      currentDefinition.payload_description[dataObject.value] && (
+                        <div>
+                          {dataObject.value} :{' '}
+                          {currentDefinition.payload_description[dataObject.value]}
+                        </div>
+                      )}
                   </div>
                 )}
                 {dataObject.format && (
