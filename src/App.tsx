@@ -26,6 +26,7 @@ import {
   updateQrObjectRecursive,
   validateCRC,
 } from '@/utils/parse-qr'
+import { Html5Qrcode } from 'html5-qrcode'
 import jsQR from 'jsqr-es6'
 import {
   AlertCircle,
@@ -84,9 +85,10 @@ export default function QRCodeParser() {
       setQRObject(updatedQrObjectWithCRC)
       setIsValid(true) // Now it's valid because we've updated the CRC to match
     } catch (error) {
+      console.log('Error parsing QR code data:', error)
       setError(
         'Failed to parse QR code data - ' +
-          (error instanceof Error ? error.message : 'Unknown error'),
+          (error instanceof Error ? 'QR is not emv format' : 'Unknown error'),
       )
       setIsValid(false)
     }
@@ -239,133 +241,24 @@ export default function QRCodeParser() {
       )
     }
   }
-
-  // Image preprocessing function to improve QR code detection for transparent/low contrast images
-  const preprocessImageForQR = (imageData: ImageData): ImageData => {
-    const data = new Uint8ClampedArray(imageData.data)
-    const width = imageData.width
-    const height = imageData.height
-
-    // Convert to grayscale and apply contrast enhancement
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i]
-      const g = data[i + 1]
-      const b = data[i + 2]
-      const alpha = data[i + 3]
-
-      // Handle transparency by treating transparent pixels as white
-      if (alpha < 128) {
-        data[i] = 255 // R
-        data[i + 1] = 255 // G
-        data[i + 2] = 255 // B
-        data[i + 3] = 255 // A
-      } else {
-        // Convert to grayscale using luminance formula
-        const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b)
-
-        // Apply contrast enhancement (make darks darker, lights lighter)
-        const enhanced = gray < 128 ? Math.max(0, gray - 30) : Math.min(255, gray + 30)
-
-        data[i] = enhanced // R
-        data[i + 1] = enhanced // G
-        data[i + 2] = enhanced // B
-        data[i + 3] = 255 // A
-      }
-    }
-
-    return new ImageData(data, width, height)
-  }
-
   const processImageFile = async (file: File) => {
     setIsProcessing(true)
     setError('')
     try {
+      const html5QrCode = new Html5Qrcode('reader')
       // Create image preview
-      const imageUrl = URL.createObjectURL(file)
-      setUploadedImage(imageUrl)
-
-      const canvas = document.createElement('canvas')
-      const ctx = canvas.getContext('2d')
-      const img = new window.Image()
-      img.crossOrigin = 'anonymous' // Set crossOrigin to avoid CORS issues [^vercel_knowledge_base]
-      if (!ctx) {
-        throw new Error('Failed to create canvas context')
-      }
-      const qrData = await new Promise<string>((resolve, reject) => {
-        img.onload = () => {
-          canvas.width = img.width
-          canvas.height = img.height
-
-          // Handle transparent images by filling with white background first
-          ctx.fillStyle = '#FFFFFF'
-          ctx.fillRect(0, 0, canvas.width, canvas.height)
-          ctx?.drawImage(img, 0, 0)
-
-          let imageData = ctx?.getImageData(0, 0, canvas.width, canvas.height)
-          if (!imageData) {
-            reject(new Error('Failed to get image data'))
-            return
-          }
-
-          // Try scanning the image as-is first (white background)
-          let qrCode = jsQR(imageData.data, imageData.width, imageData.height)
-
-          // If not found, try with black background for transparent images
-          if (!qrCode) {
-            ctx.fillStyle = '#000000'
-            ctx.fillRect(0, 0, canvas.width, canvas.height)
-            ctx?.drawImage(img, 0, 0)
-            imageData = ctx?.getImageData(0, 0, canvas.width, canvas.height)
-            if (imageData) {
-              qrCode = jsQR(imageData.data, imageData.width, imageData.height)
-            }
-          }
-
-          // If still not found, try preprocessing the image for better contrast
-          if (!qrCode && imageData) {
-            const processedImageData = preprocessImageForQR(imageData)
-            qrCode = jsQR(
-              processedImageData.data,
-              processedImageData.width,
-              processedImageData.height,
-            )
-          }
-
-          if (qrCode) {
-            setUploadedImage(imageUrl)
-            // Draw a red rectangle around the detected QR code area on the preview image
-            if (qrCode && qrCode.location) {
-              // Redraw the original image for annotation
-              ctx.fillStyle = '#FFFFFF'
-              ctx.fillRect(0, 0, canvas.width, canvas.height)
-              ctx?.drawImage(img, 0, 0)
-
-              const { location } = qrCode
-              ctx.strokeStyle = 'red'
-              ctx.lineWidth = 4
-              ctx.beginPath()
-              ctx.moveTo(location.topLeftCorner.x, location.topLeftCorner.y)
-              ctx.lineTo(location.topRightCorner.x, location.topRightCorner.y)
-              ctx.lineTo(location.bottomRightCorner.x, location.bottomRightCorner.y)
-              ctx.lineTo(location.bottomLeftCorner.x, location.bottomLeftCorner.y)
-              ctx.closePath()
-              ctx.stroke()
-              // Save the annotated image as a data URL for preview
-              setUploadedImage(canvas.toDataURL('image/png'))
-            }
-            resolve(qrCode.data)
-          } else {
-            reject(new Error('No QR code found in image'))
-          }
-        }
-        img.onerror = () => reject(new Error('Failed to load image'))
-        img.src = imageUrl
-      })
-
-      setQrData(qrData)
-      handleParseData(qrData)
+      html5QrCode
+        .scanFile(file, false)
+        .then((result) => {
+          setUploadedImage(URL.createObjectURL(file))
+          setQrData(result)
+          handleParseData(result)
+        })
+        .catch((e) => {
+          console.log('No QR code found in image:', e)
+          setError('No QR code found in the image. Please try a different image.')
+        })
     } catch (error) {
-      console.log('Error processing image file:', error)
       setError(
         error instanceof Error
           ? error.message
@@ -400,7 +293,7 @@ export default function QRCodeParser() {
       console.log('Error parsing QR code data:', error)
       setError(
         'Failed to parse QR code data - ' +
-          (error instanceof Error ? error.message : 'Unknown error'),
+          (error instanceof Error ? 'QR is not follow EMVco specification' : 'Unknown error'),
       )
       setIsValid(false)
     }
@@ -467,6 +360,8 @@ export default function QRCodeParser() {
     try {
       setError('')
       setIsScanning(true)
+      setUploadedImage(null)
+      setQRObject([])
       const permissionsStatus = await navigator.permissions.query({
         name: 'camera',
       })
@@ -1122,6 +1017,24 @@ export default function QRCodeParser() {
                   </div>
                 </div>
               )}
+              {isScanning && (
+                <div className="space-y-2">
+                  <Label>Camera Preview</Label>
+                  <div className="relative">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      className="w-full max-h-[300px] rounded-lg border bg-black"
+                    />
+                    <canvas
+                      ref={canvasRef}
+                      className="absolute inset-0"
+                      style={{ display: 'none' }}
+                    />
+                  </div>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="qr-data">QR Code Data</Label>
                 <div
@@ -1218,25 +1131,6 @@ export default function QRCodeParser() {
                 onChange={handleFileUpload}
                 className="hidden"
               />
-              {/* Camera Preview */}
-              {isScanning && (
-                <div className="space-y-2">
-                  <Label>Camera Preview</Label>
-                  <div className="relative">
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      className="w-full max-h-[300px] rounded-lg border bg-black"
-                    />
-                    <canvas
-                      ref={canvasRef}
-                      className="absolute inset-0"
-                      style={{ display: 'none' }}
-                    />
-                  </div>
-                </div>
-              )}
               {/* Error Display */}
               {error && (
                 <Alert variant={error.startsWith('Warning') ? 'default' : 'destructive'}>
@@ -1347,6 +1241,7 @@ export default function QRCodeParser() {
           </Card>
         </div>
       </div>
+      <div id="reader"></div>
     </TooltipProvider>
   )
 }
