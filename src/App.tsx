@@ -67,6 +67,7 @@ export default function QRCodeParser() {
   const scanIntervalRef = useRef<any>(null)
   const [addRootFieldOpen, setAddRootFieldOpen] = useState(false)
   const [addRootFieldSearchValue, setAddRootFieldSearchValue] = useState('')
+  const [isCopyParsed, setIsCopyParsed] = useState(false)
 
   const handleParse = () => {
     try {
@@ -959,7 +960,25 @@ export default function QRCodeParser() {
 
   const RenderDataObject = ({ parseObject }: { parseObject: ParsedDataObject[] }) => {
     return (
-      <div className="font-mono text-sm whitespace-pre-wrap border rounded-lg p-4 bg-muted/50">
+      <div className="font-mono text-sm whitespace-pre-wrap border rounded-lg p-4 bg-muted/50 relative">
+        <Button
+          onClick={handleCopyParsedObject}
+          variant="outline"
+          size="sm"
+          className="mr-2 top-2 right-2 mb-2 absolute"
+        >
+          {!isCopyParsed ? (
+            <>
+              <Copy className="h-4 w-4 mr-1" />
+              Copy
+            </>
+          ) : (
+            <>
+              <ClipboardCheck className="h-4 w-4 mr-1" />
+              Copied
+            </>
+          )}
+        </Button>
         {parseObject.map((dataObject, idx) => (
           <DataObjectLine
             key={`${dataObject.id}-root-${idx}`}
@@ -973,6 +992,27 @@ export default function QRCodeParser() {
         ))}
       </div>
     )
+  }
+
+  function handleCopyParsedObject() {
+    let parsedString = ''
+    const buildString = (objects: ParsedDataObject[], indent = 0) => {
+      objects.forEach((obj) => {
+        const indentStr = '. . . '.repeat(indent)
+        parsedString += `${indentStr}${obj.id} ${obj.length}`
+        if (obj.children && obj.children.length > 0) {
+          parsedString += '\n'
+          buildString(obj.children, indent + 1)
+        } else {
+          parsedString += ` ${obj.value}\n`
+        }
+      })
+    }
+    buildString(qrObject)
+    navigator.clipboard.writeText(parsedString).then(() => {
+      setIsCopyParsed(true)
+      setTimeout(() => setIsCopyParsed(false), 2000)
+    })
   }
 
   return (
