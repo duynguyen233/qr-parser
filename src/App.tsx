@@ -960,25 +960,7 @@ export default function QRCodeParser() {
 
   const RenderDataObject = ({ parseObject }: { parseObject: ParsedDataObject[] }) => {
     return (
-      <div className="font-mono text-sm whitespace-pre-wrap border rounded-lg p-4 bg-muted/50 relative">
-        <Button
-          onClick={handleCopyParsedObject}
-          variant="outline"
-          size="sm"
-          className="mr-2 top-2 right-2 mb-2 absolute"
-        >
-          {!isCopyParsed ? (
-            <>
-              <Copy className="h-4 w-4 mr-1" />
-              Copy
-            </>
-          ) : (
-            <>
-              <ClipboardCheck className="h-4 w-4 mr-1" />
-              Copied
-            </>
-          )}
-        </Button>
+      <div className="font-mono text-sm whitespace-pre-wrap border rounded-lg p-4 bg-muted/50">
         {parseObject.map((dataObject, idx) => (
           <DataObjectLine
             key={`${dataObject.id}-root-${idx}`}
@@ -1206,6 +1188,26 @@ export default function QRCodeParser() {
               <CardTitle>Parsed QR Format (Editable)</CardTitle>
               <CardDescription>Edit the structured breakdown of the QR code data</CardDescription>
               <div className="absolute top-4 right-4">
+                {qrObject.length !== 0 && (
+                  <Button
+                    onClick={handleCopyParsedObject}
+                    variant="outline"
+                    size="sm"
+                    className="mr-2"
+                  >
+                    {!isCopyParsed ? (
+                      <>
+                        <Copy className="h-4 w-4 mr-1" />
+                        Copy
+                      </>
+                    ) : (
+                      <>
+                        <ClipboardCheck className="h-4 w-4 mr-1" />
+                        Copied
+                      </>
+                    )}
+                  </Button>
+                )}
                 <DropdownMenu open={addRootFieldOpen} onOpenChange={setAddRootFieldOpen}>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="sm">
