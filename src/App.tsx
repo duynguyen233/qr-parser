@@ -82,8 +82,8 @@ export default function QRCodeParser() {
       }
       const initialQrObject = parseQRCode(qrData)
       validateCRC(initialQrObject) // Validate original CRC [^vercel_knowledge_base]
-      const updatedQrObjectWithCRC = updateCRCInParsedObject(initialQrObject) // Recalculate and update CRC
-      setQRObject(updatedQrObjectWithCRC)
+      // const updatedQrObjectWithCRC = updateCRCInParsedObject(initialQrObject) // Recalculate and update CRC
+      setQRObject(initialQrObject)
       setIsValid(true) // Now it's valid because we've updated the CRC to match
     } catch (error) {
       console.log('Error parsing QR code data:', error)
@@ -287,8 +287,8 @@ export default function QRCodeParser() {
       }
       const initialQrObject = parseQRCode(data)
       validateCRC(initialQrObject) // Validate original CRC [^vercel_knowledge_base]
-      const updatedQrObjectWithCRC = updateCRCInParsedObject(initialQrObject) // Recalculate and update CRC
-      setQRObject(updatedQrObjectWithCRC)
+      // const updatedQrObjectWithCRC = updateCRCInParsedObject(initialQrObject) // Recalculate and update CRC
+      setQRObject(initialQrObject)
       setIsValid(true) // Now it's valid because we've updated the CRC to match
     } catch (error) {
       console.log('Error parsing QR code data:', error)
