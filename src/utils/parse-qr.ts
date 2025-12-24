@@ -284,7 +284,7 @@ function validateCRC(data: ParsedDataObject[]) {
     .toString(16)
     .padStart(4, '0')
     .toUpperCase()
-  if (checkSumValue !== crcChecksum.value) {
+  if (checkSumValue !== crcChecksum.value.toUpperCase()) {
     throw new Error(`CRC checksum mismatch: expected ${checkSumValue}, got ${crcChecksum.value}`)
   }
 }
