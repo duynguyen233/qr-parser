@@ -6,7 +6,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="json-toolkit" element={<JsonToolkit />} />
+        <Route path="/json-toolkit" element={<JsonToolkit />} />
         <Route path="*" element={<QRCodeParser />} />
       </Routes>
     </BrowserRouter>
