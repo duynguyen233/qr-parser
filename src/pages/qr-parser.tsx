@@ -893,32 +893,34 @@ export default function QRCodeParser() {
                 </div>
               </div>
             </TooltipTrigger>
-            <TooltipContent side="right">
-              {/* Tooltip content remains the same */}
-              <div className="max-w-xs">
-                {dataObject.name && (
-                  <div className="font-semibold text-white mb-1">{dataObject.name}</div>
-                )}
-                {dataObject.description && (
-                  <div className="text-gray-200 text-xs">
-                    {dataObject.description?.split('\n').map((line, idx) => (
-                      <div key={idx}>{line}</div>
-                    ))}
-                    {currentDefinition.payload_description &&
-                      dataObject.value &&
-                      currentDefinition.payload_description[dataObject.value] && (
-                        <div>
-                          {dataObject.value} :{' '}
-                          {currentDefinition.payload_description[dataObject.value]}
-                        </div>
-                      )}
-                  </div>
-                )}
-                {dataObject.format && (
-                  <div className="text-gray-300 text-xs mt-1">Format: {dataObject.format}</div>
-                )}
-              </div>
-            </TooltipContent>
+            {currentDefinition && (
+              <TooltipContent side="right">
+                {/* Tooltip content remains the same */}
+                <div className="max-w-xs">
+                  {dataObject.name && (
+                    <div className="font-semibold text-white mb-1">{dataObject.name}</div>
+                  )}
+                  {dataObject.description && (
+                    <div className="text-gray-200 text-xs">
+                      {dataObject.description?.split('\n').map((line, idx) => (
+                        <div key={idx}>{line}</div>
+                      ))}
+                      {currentDefinition.payload_description &&
+                        dataObject.value &&
+                        currentDefinition.payload_description[dataObject.value] && (
+                          <div>
+                            {dataObject.value} :{' '}
+                            {currentDefinition.payload_description[dataObject.value]}
+                          </div>
+                        )}
+                    </div>
+                  )}
+                  {dataObject.format && (
+                    <div className="text-gray-300 text-xs mt-1">Format: {dataObject.format}</div>
+                  )}
+                </div>
+              </TooltipContent>
+            )}
           </Tooltip>
           {dataObject.children && dataObject.children.length > 0 && (
             <div>
